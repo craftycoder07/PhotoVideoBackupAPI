@@ -1,0 +1,31 @@
+{
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.AspNetCore": "Warning",
+      "PhotoVideoBackupAPI": "Information"
+    }
+  },
+  "AllowedHosts": "*",
+  "StorageSettings": {
+    "BasePath": "/path/to/your/media/backup",
+    "MaxFileSize": 104857600,
+    "EnableThumbnails": true,
+    "ThumbnailSize": 300,
+    "CompressionQuality": 85
+  },
+  "BackupSettings": {
+    "DefaultBackupWindow": {
+      "StartTime": "22:00:00",
+      "EndTime": "06:00:00"
+    },
+    "MaxConcurrentSessions": 5,
+    "SessionTimeoutMinutes": 30,
+    "RetentionDays": 90
+  },
+  "ConnectionStrings": {
+    "DefaultConnection": "Host=localhost;Database=PhotoVideoBackup;Username=y*******;Password=*******;Port=5432"
+  }
+}
+
+
