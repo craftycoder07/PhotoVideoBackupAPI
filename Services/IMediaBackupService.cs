@@ -8,6 +8,7 @@ namespace PhotoVideoBackupAPI.Services
         Task<Device> RegisterDeviceAsync(DeviceRegistrationRequest request);
         Task<Device?> GetDeviceAsync(string deviceId);
         Task<List<Device>> GetAllDevicesAsync();
+        Task<List<Device>> GetUserDevicesAsync(string userId);
         Task<Device> UpdateDeviceSettingsAsync(string deviceId, DeviceSettings settings);
         Task<bool> DeleteDeviceAsync(string deviceId);
         
@@ -38,6 +39,7 @@ namespace PhotoVideoBackupAPI.Services
     
     public class DeviceRegistrationRequest
     {
+        public string UserId { get; set; } = string.Empty;
         public string DeviceName { get; set; } = string.Empty;
         public string DeviceModel { get; set; } = string.Empty;
         public string? DeviceId { get; set; }

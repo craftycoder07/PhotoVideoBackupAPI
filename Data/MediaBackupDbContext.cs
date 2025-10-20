@@ -9,6 +9,7 @@ namespace PhotoVideoBackupAPI.Data
         {
         }
 
+        public DbSet<User> Users { get; set; }
         public DbSet<Device> Devices { get; set; }
         public DbSet<BackupSession> BackupSessions { get; set; }
         public DbSet<MediaItem> MediaItems { get; set; }
@@ -17,11 +18,39 @@ namespace PhotoVideoBackupAPI.Data
         {
             base.OnModelCreating(modelBuilder);
 
+            // User configuration
+            modelBuilder.Entity<User>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).HasMaxLength(50);
+                entity.Property(e => e.Username).IsRequired().HasMaxLength(50);
+                entity.Property(e => e.Email).IsRequired().HasMaxLength(255);
+                entity.Property(e => e.PasswordHash).IsRequired().HasMaxLength(255);
+                entity.Property(e => e.CreatedAt).IsRequired();
+                entity.Property(e => e.LastLoginAt).IsRequired();
+                entity.Property(e => e.IsActive).IsRequired();
+
+                // Configure one-to-many relationships
+                entity.HasMany(e => e.Devices)
+                    .WithOne(d => d.User)
+                    .HasForeignKey(d => d.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasMany(e => e.BackupSessions)
+                    .WithOne(s => s.User)
+                    .HasForeignKey(s => s.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasIndex(e => e.Username).IsUnique();
+                entity.HasIndex(e => e.Email).IsUnique();
+            });
+
             // Device configuration
             modelBuilder.Entity<Device>(entity =>
             {
                 entity.HasKey(e => e.Id);
                 entity.Property(e => e.Id).HasMaxLength(50);
+                entity.Property(e => e.UserId).IsRequired().HasMaxLength(50);
                 entity.Property(e => e.DeviceName).IsRequired().HasMaxLength(200);
                 entity.Property(e => e.DeviceModel).IsRequired().HasMaxLength(200);
                 entity.Property(e => e.DeviceId).HasMaxLength(100);
@@ -46,10 +75,11 @@ namespace PhotoVideoBackupAPI.Data
 
                 // Configure one-to-many relationship with MediaItems
                 entity.HasMany(e => e.MediaItems)
-                    .WithOne()
+                    .WithOne(m => m.Device)
                     .HasForeignKey(m => m.DeviceId)
                     .OnDelete(DeleteBehavior.Cascade);
 
+                entity.HasIndex(e => e.UserId);
                 entity.HasIndex(e => e.DeviceId).IsUnique();
                 entity.HasIndex(e => e.ApiKey).IsUnique();
             });
@@ -59,6 +89,7 @@ namespace PhotoVideoBackupAPI.Data
             {
                 entity.HasKey(e => e.Id);
                 entity.Property(e => e.Id).HasMaxLength(50);
+                entity.Property(e => e.UserId).IsRequired().HasMaxLength(50);
                 entity.Property(e => e.DeviceId).IsRequired().HasMaxLength(50);
                 entity.Property(e => e.StartTime).IsRequired();
                 entity.Property(e => e.Status).IsRequired();
@@ -90,16 +121,17 @@ namespace PhotoVideoBackupAPI.Data
 
                 // Configure one-to-many relationship with MediaItems
                 entity.HasMany(e => e.Items)
-                    .WithOne()
+                    .WithOne(m => m.Session)
                     .HasForeignKey(m => m.SessionId)
                     .OnDelete(DeleteBehavior.Cascade);
 
                 // Configure foreign key relationship with Device
-                entity.HasOne<Device>()
+                entity.HasOne(d => d.Device)
                     .WithMany()
                     .HasForeignKey(e => e.DeviceId)
                     .OnDelete(DeleteBehavior.Cascade);
 
+                entity.HasIndex(e => e.UserId);
                 entity.HasIndex(e => e.DeviceId);
                 entity.HasIndex(e => e.StartTime);
                 entity.HasIndex(e => e.Status);
@@ -110,6 +142,7 @@ namespace PhotoVideoBackupAPI.Data
             {
                 entity.HasKey(e => e.Id);
                 entity.Property(e => e.Id).HasMaxLength(50);
+                entity.Property(e => e.UserId).IsRequired().HasMaxLength(50);
                 entity.Property(e => e.DeviceId).IsRequired().HasMaxLength(50);
                 entity.Property(e => e.FileName).IsRequired().HasMaxLength(500);
                 entity.Property(e => e.OriginalPath).HasMaxLength(1000);
@@ -143,11 +176,12 @@ namespace PhotoVideoBackupAPI.Data
                         c => c.ToList()));
 
                 // Configure foreign key relationship with Device
-                entity.HasOne<Device>()
+                entity.HasOne(d => d.Device)
                     .WithMany(d => d.MediaItems)
                     .HasForeignKey(e => e.DeviceId)
                     .OnDelete(DeleteBehavior.Cascade);
 
+                entity.HasIndex(e => e.UserId);
                 entity.HasIndex(e => e.DeviceId);
                 entity.HasIndex(e => e.CreatedDate);
                 entity.HasIndex(e => e.Type);

@@ -4,14 +4,17 @@ A .NET 8 Web API that acts like Google Photos for local backup. Mobile devices c
 
 ## Features
 
-- **Mobile Device Management**: Register and manage multiple mobile devices
+- **User Authentication System**: Secure JWT-based authentication with user registration and login
+- **Multi-Device Support**: Users can register multiple devices under a single account
+- **Unified Media Library**: All media from multiple devices appears in one user account
+- **Mobile Device Management**: Register and manage multiple mobile devices per user
 - **Automatic Night Backup**: Configure backup windows (e.g., 10 PM - 6 AM)
 - **Session-based Uploads**: Secure backup sessions with progress tracking
 - **Media Organization**: Automatic categorization of photos and videos
 - **Thumbnail Generation**: Fast preview generation for media items
 - **Search & Filtering**: Find media by date, tags, or text search
 - **Statistics & Analytics**: Track backup progress and storage usage
-- **RESTful API**: Clean, intuitive endpoints for mobile apps
+- **Modular API Design**: Clean, RESTful endpoints organized by domain
 - **File Integrity**: SHA256 hash verification for uploaded files
 - **Flexible Settings**: Per-device backup preferences and restrictions
 
@@ -51,14 +54,97 @@ A .NET 8 Web API that acts like Google Photos for local backup. Mobile devices c
 
 5. Open your browser and navigate to `https://localhost:7109` to access the Swagger UI.
 
+## API Architecture
+
+The API follows a modular design with separate controllers for each domain:
+
+- **AuthController** (`/api/auth/*`): Authentication and token management
+- **DeviceController** (`/api/device/*`): Device registration and management
+- **SessionController** (`/api/session/*`): Backup session management
+- **MediaController** (`/api/media/*`): Media upload and retrieval
+- **StatsController** (`/api/stats/*`): Statistics and analytics
+
+This modular approach provides:
+- **Better Organization**: Each controller handles a specific domain
+- **Easier Maintenance**: Smaller, focused controllers are easier to test and modify
+- **RESTful Design**: Clean, intuitive URL structure
+- **Future Versioning**: Easy to add version prefixes (e.g., `/v2/`) in the future
+
 ## API Endpoints
 
-### Device Management
+The API is organized into modular controllers for better maintainability and RESTful design:
+
+### Authentication (`/api/auth/*`)
+
+#### User Registration
+**POST** `/api/auth/register`
+
+Register a new user account.
+
+```json
+{
+  "username": "john_doe",
+  "email": "john@example.com",
+  "password": "SecurePassword123"
+}
+```
+
+#### User Login
+**POST** `/api/auth/login`
+
+Authenticate user with username and password.
+
+```json
+{
+  "username": "john_doe",
+  "password": "SecurePassword123"
+}
+```
+
+**Response:**
+```json
+{
+  "userId": "user-123",
+  "username": "john_doe",
+  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "refreshToken": "refresh-token-here",
+  "expiresAt": "2024-01-01T12:00:00Z"
+}
+```
+
+#### Refresh Token
+**POST** `/api/auth/refresh`
+
+Refresh authentication token.
+
+```json
+{
+  "refreshToken": "refresh-token-here"
+}
+```
+
+#### Logout
+**POST** `/api/auth/logout`
+
+Logout and invalidate token.
+
+```json
+{
+  "refreshToken": "refresh-token-here"
+}
+```
+
+### Device Management (`/api/device/*`)
 
 #### Register Device
-**POST** `/api/mediabackup/devices/register`
+**POST** `/api/device/register`
 
-Register a new mobile device for backup.
+Register a new mobile device for backup. **Requires JWT authentication.**
+
+**Headers:**
+```
+Authorization: Bearer <jwt-token>
+```
 
 ```json
 {
@@ -80,38 +166,61 @@ Register a new mobile device for backup.
 ```
 
 #### Get Device Info
-**GET** `/api/mediabackup/devices/{deviceId}`
+**GET** `/api/device/{deviceId}`
+
+**Requires JWT authentication.** Returns device info only if it belongs to the authenticated user.
 
 #### Update Device Settings
-**PUT** `/api/mediabackup/devices/{deviceId}/settings`
+**PUT** `/api/device/{deviceId}/settings`
+
+**Requires JWT authentication.** Update settings for a device owned by the authenticated user.
 
 #### Get All Devices
-**GET** `/api/mediabackup/devices`
+**GET** `/api/device`
 
-### Backup Sessions
+**Requires JWT authentication.** Returns all devices belonging to the authenticated user.
+
+#### Delete Device
+**DELETE** `/api/device/{deviceId}`
+
+**Requires JWT authentication.** Delete a device owned by the authenticated user.
+
+### Backup Sessions (`/api/session/*`)
 
 #### Start Backup Session
-**POST** `/api/mediabackup/devices/{deviceId}/sessions`
+**POST** `/api/session/start`
+
+**Requires JWT authentication.** Start a backup session for a device owned by the authenticated user.
+
+**Headers:**
+```
+Authorization: Bearer <jwt-token>
+```
 
 ```json
 {
-  "deviceName": "iPhone 15 Pro",
-  "deviceModel": "iPhone15,2",
-  "networkType": "WiFi",
-  "isCharging": true,
-  "batteryLevel": 85,
-  "appVersion": "1.0.0",
-  "osVersion": "iOS 17.1"
+  "deviceId": "device-123",
+  "sessionInfo": {
+    "deviceName": "iPhone 15 Pro",
+    "deviceModel": "iPhone15,2",
+    "networkType": "WiFi",
+    "isCharging": true,
+    "batteryLevel": 85,
+    "appVersion": "1.0.0",
+    "osVersion": "iOS 17.1"
+  }
 }
 ```
 
-#### Upload Media
-**POST** `/api/mediabackup/sessions/{sessionId}/upload`
+#### Get Session Details
+**GET** `/api/session/{sessionId}`
 
-Upload media files to an active backup session.
+**Requires JWT authentication.** Returns session details only if it belongs to the authenticated user.
 
 #### Update Session Progress
-**PUT** `/api/mediabackup/sessions/{sessionId}`
+**PUT** `/api/session/{sessionId}`
+
+**Requires JWT authentication.** Update session progress for a session owned by the authenticated user.
 
 ```json
 {
@@ -124,79 +233,145 @@ Upload media files to an active backup session.
 }
 ```
 
-#### Get Session Details
-**GET** `/api/mediabackup/sessions/{sessionId}`
+#### Get Device Sessions
+**GET** `/api/session/device/{deviceId}`
 
-### Media Management
+**Requires JWT authentication.** Returns sessions for a device owned by the authenticated user.
 
-#### Get Device Media
-**GET** `/api/mediabackup/devices/{deviceId}/media?page=1&pageSize=50`
+### Media Management (`/api/media/*`)
+
+#### Upload Media
+**POST** `/api/media/upload/{sessionId}`
+
+**Requires JWT authentication.** Upload media files to an active backup session owned by the authenticated user.
 
 #### Get Media Item
-**GET** `/api/mediabackup/media/{mediaId}`
+**GET** `/api/media/{mediaId}`
+
+**Requires JWT authentication.** Returns media item only if it belongs to the authenticated user.
+
+#### Get Device Media
+**GET** `/api/media/device/{deviceId}?page=1&pageSize=50`
+
+**Requires JWT authentication.** Returns media for a device owned by the authenticated user.
 
 #### Get Thumbnail
-**GET** `/api/mediabackup/media/{mediaId}/thumbnail`
+**GET** `/api/media/{mediaId}/thumbnail`
+
+**Requires JWT authentication.** Returns thumbnail for media owned by the authenticated user.
 
 #### Search Media
-**GET** `/api/mediabackup/devices/{deviceId}/search?query=beach&fromDate=2024-01-01&toDate=2024-12-31`
+**GET** `/api/media/device/{deviceId}/search?query=beach&fromDate=2024-01-01&toDate=2024-12-31`
+
+**Requires JWT authentication.** Search media for a device owned by the authenticated user.
 
 #### Get Media by Date Range
-**GET** `/api/mediabackup/devices/{deviceId}/media/date-range?fromDate=2024-01-01&toDate=2024-12-31`
+**GET** `/api/media/device/{deviceId}/date-range?fromDate=2024-01-01&toDate=2024-12-31`
 
-### Statistics
+**Requires JWT authentication.** Get media by date range for a device owned by the authenticated user.
+
+#### Delete Media Item
+**DELETE** `/api/media/{mediaId}`
+
+**Requires JWT authentication.** Delete media item owned by the authenticated user.
+
+### Statistics (`/api/stats/*`)
 
 #### Get Device Stats
-**GET** `/api/mediabackup/devices/{deviceId}/stats`
+**GET** `/api/stats/device/{deviceId}`
+
+**Requires JWT authentication.** Returns stats for a device owned by the authenticated user.
 
 #### Get System Stats
-**GET** `/api/mediabackup/stats`
+**GET** `/api/stats/system`
+
+**Requires JWT authentication.** Returns system-wide statistics.
 
 ## Mobile App Integration
 
 ### Typical Backup Flow
 
-1. **Device Registration**: Mobile app registers with the server
-2. **Session Creation**: App starts a backup session when conditions are met
-3. **Media Upload**: App uploads photos/videos in batches
-4. **Progress Updates**: App reports progress to the server
-5. **Session Completion**: App marks session as complete
+1. **User Registration/Login**: User creates account or logs in to get JWT token
+2. **Device Registration**: Mobile app registers device under user account
+3. **Session Creation**: App starts a backup session when conditions are met
+4. **Media Upload**: App uploads photos/videos in batches
+5. **Progress Updates**: App reports progress to the server
+6. **Session Completion**: App marks session as complete
 
 ### Example Mobile App Code (JavaScript)
 
 ```javascript
 class MediaBackupClient {
-    constructor(serverUrl, deviceId, apiKey) {
+    constructor(serverUrl, username, password) {
         this.serverUrl = serverUrl;
-        this.deviceId = deviceId;
-        this.apiKey = apiKey;
+        this.username = username;
+        this.password = password;
+        this.accessToken = null;
     }
 
-    async registerDevice(deviceName, deviceModel) {
-        const response = await fetch(`${this.serverUrl}/api/mediabackup/devices/register`, {
+    async login() {
+        const response = await fetch(`${this.serverUrl}/api/auth/login`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                username: this.username,
+                password: this.password
+            })
+        });
+        
+        const authData = await response.json();
+        this.accessToken = authData.accessToken;
+        return authData;
+    }
+
+    async register(username, email, password) {
+        const response = await fetch(`${this.serverUrl}/api/auth/register`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                username,
+                email,
+                password
+            })
+        });
+        
+        const authData = await response.json();
+        this.accessToken = authData.accessToken;
+        return authData;
+    }
+
+    async registerDevice(deviceName, deviceModel, deviceId) {
+        const response = await fetch(`${this.serverUrl}/api/device/register`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${this.apiKey}`
+                'Authorization': `Bearer ${this.accessToken}`
             },
             body: JSON.stringify({
                 deviceName,
                 deviceModel,
-                deviceId: this.deviceId
+                deviceId
             })
         });
         
         return await response.json();
     }
 
-    async startBackupSession(sessionInfo) {
-        const response = await fetch(`${this.serverUrl}/api/mediabackup/devices/${this.deviceId}/sessions`, {
+    async startBackupSession(deviceId, sessionInfo) {
+        const response = await fetch(`${this.serverUrl}/api/session/start`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${this.apiKey}`
+                'Authorization': `Bearer ${this.accessToken}`
             },
-            body: JSON.stringify(sessionInfo)
+            body: JSON.stringify({
+                deviceId,
+                sessionInfo
+            })
         });
         
         return await response.json();
@@ -206,10 +381,10 @@ class MediaBackupClient {
         const formData = new FormData();
         formData.append('file', file);
         
-        const response = await fetch(`${this.serverUrl}/api/mediabackup/sessions/${sessionId}/upload`, {
+        const response = await fetch(`${this.serverUrl}/api/media/upload/${sessionId}`, {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${this.apiKey}`
+                'Authorization': `Bearer ${this.accessToken}`
             },
             body: formData
         });
@@ -218,11 +393,11 @@ class MediaBackupClient {
     }
 
     async updateSessionProgress(sessionId, progress) {
-        const response = await fetch(`${this.serverUrl}/api/mediabackup/sessions/${sessionId}`, {
+        const response = await fetch(`${this.serverUrl}/api/session/${sessionId}`, {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${this.apiKey}`
+                'Authorization': `Bearer ${this.accessToken}`
             },
             body: JSON.stringify(progress)
         });
@@ -232,11 +407,20 @@ class MediaBackupClient {
 }
 
 // Usage example
-const backupClient = new MediaBackupClient('https://localhost:7109', 'my-device-id', 'api-key');
+const backupClient = new MediaBackupClient('https://localhost:7109', 'john_doe', 'SecurePassword123');
+
+// Authenticate first
+const authResponse = await backupClient.login();
+if (!authResponse.accessToken) {
+    throw new Error('Authentication failed');
+}
+
+// Register device
+const device = await backupClient.registerDevice('iPhone 15 Pro', 'iPhone15,2', 'iphone-15-001');
 
 // Start backup when conditions are met
 if (isWifiConnected && isCharging && isNightTime) {
-    const session = await backupClient.startBackupSession({
+    const session = await backupClient.startBackupSession(device.id, {
         networkType: 'WiFi',
         isCharging: true,
         batteryLevel: getBatteryLevel()
@@ -276,17 +460,27 @@ The API can be configured through `appsettings.json`:
     "MaxConcurrentSessions": 5,
     "SessionTimeoutMinutes": 30,
     "RetentionDays": 90
+  },
+  "Jwt": {
+    "Secret": "your-super-secret-key-that-is-at-least-32-characters-long",
+    "Issuer": "PhotoVideoBackupAPI",
+    "ExpirationMinutes": 60,
+    "RefreshTokenExpirationDays": 30
   }
 }
 ```
 
 ## Security Considerations
 
-- **API Key Authentication**: Each device gets a unique API key
-- **HTTPS Required**: All communications should use HTTPS
-- **File Validation**: Uploaded files are validated and hashed
+- **User Authentication**: Secure JWT-based authentication with username/password
+- **Password Security**: Passwords are hashed using PBKDF2 with random salts
+- **Token-based Security**: JWT tokens for secure API access with refresh capabilities
+- **User Data Isolation**: Each user can only access their own devices and media
+- **HTTPS Required**: All communications should use HTTPS in production
+- **File Validation**: Uploaded files are validated and hashed for integrity
 - **Session Management**: Backup sessions have timeouts and limits
 - **CORS Configuration**: Configure CORS appropriately for your mobile apps
+- **Multi-Device Support**: Users can securely manage multiple devices under one account
 
 ## Performance
 
@@ -300,11 +494,14 @@ The API can be configured through `appsettings.json`:
 
 ```
 /Users/craftycoder07/MediaBackup/
-├── device-id-1/
-│   ├── media-file-1.jpg
-│   ├── media-file-2.mp4
-│   └── ...
-├── device-id-2/
+├── user-id-1/
+│   ├── device-id-1/
+│   │   ├── media-file-1.jpg
+│   │   ├── media-file-2.mp4
+│   │   └── ...
+│   └── device-id-2/
+│       └── ...
+├── user-id-2/
 │   └── ...
 └── Thumbnails/
     ├── media-id-1_thumb.jpg

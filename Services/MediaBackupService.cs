@@ -38,6 +38,7 @@ namespace PhotoVideoBackupAPI.Services
             var device = new Device
             {
                 Id = deviceId,
+                UserId = request.UserId,
                 DeviceName = request.DeviceName,
                 DeviceModel = request.DeviceModel,
                 DeviceId = deviceId,
@@ -48,11 +49,12 @@ namespace PhotoVideoBackupAPI.Services
             _context.Devices.Add(device);
             await _context.SaveChangesAsync();
             
-            // Create device storage directory
-            var devicePath = Path.Combine(_baseStoragePath, deviceId);
+            // Create device storage directory under user directory
+            var userPath = Path.Combine(_baseStoragePath, request.UserId);
+            var devicePath = Path.Combine(userPath, deviceId);
             Directory.CreateDirectory(devicePath);
             
-            _logger.LogInformation("Device registered: {DeviceName} ({DeviceId})", device.DeviceName, deviceId);
+            _logger.LogInformation("Device registered: {DeviceName} ({DeviceId}) under user {UserId}", device.DeviceName, deviceId, request.UserId);
             
             return device;
         }
@@ -67,6 +69,14 @@ namespace PhotoVideoBackupAPI.Services
         public async Task<List<Device>> GetAllDevicesAsync()
         {
             return await _context.Devices
+                .Include(d => d.MediaItems)
+                .ToListAsync();
+        }
+
+        public async Task<List<Device>> GetUserDevicesAsync(string userId)
+        {
+            return await _context.Devices
+                .Where(d => d.UserId == userId)
                 .Include(d => d.MediaItems)
                 .ToListAsync();
         }
@@ -101,7 +111,8 @@ namespace PhotoVideoBackupAPI.Services
             await _context.SaveChangesAsync();
             
             // Delete device storage directory
-            var devicePath = Path.Combine(_baseStoragePath, deviceId);
+            var userPath = Path.Combine(_baseStoragePath, device.UserId);
+            var devicePath = Path.Combine(userPath, deviceId);
             if (Directory.Exists(devicePath))
             {
                 Directory.Delete(devicePath, true);
@@ -122,6 +133,7 @@ namespace PhotoVideoBackupAPI.Services
 
             var session = new BackupSession
             {
+                UserId = device.UserId,
                 DeviceId = deviceId,
                 SessionInfo = sessionInfo
             };
@@ -208,7 +220,8 @@ namespace PhotoVideoBackupAPI.Services
 
             // Generate unique filename
             var fileName = $"{Guid.NewGuid()}{extension}";
-            var devicePath = Path.Combine(_baseStoragePath, session.DeviceId);
+            var userPath = Path.Combine(_baseStoragePath, session.UserId);
+            var devicePath = Path.Combine(userPath, session.DeviceId);
             var filePath = Path.Combine(devicePath, fileName);
 
             // Save file
@@ -230,6 +243,7 @@ namespace PhotoVideoBackupAPI.Services
             // Create media item
             var mediaItem = new MediaItem
             {
+                UserId = session.UserId,
                 DeviceId = session.DeviceId,
                 SessionId = sessionId,
                 FileName = file.FileName,
@@ -264,6 +278,9 @@ namespace PhotoVideoBackupAPI.Services
                     device.Stats.TotalPhotos++;
                 else
                     device.Stats.TotalVideos++;
+                
+                // Mark the device as modified so EF detects the JSON changes
+                _context.Entry(device).Property(d => d.Stats).IsModified = true;
             }
 
             await _context.SaveChangesAsync();

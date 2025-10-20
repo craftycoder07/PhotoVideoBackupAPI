@@ -7,6 +7,9 @@ namespace PhotoVideoBackupAPI.Models
         public string Id { get; set; } = Guid.NewGuid().ToString();
         
         [Required]
+        public string UserId { get; set; } = string.Empty;
+        
+        [Required]
         public string DeviceId { get; set; } = string.Empty;
         
         public DateTime StartTime { get; set; } = DateTime.UtcNow;
@@ -34,6 +37,10 @@ namespace PhotoVideoBackupAPI.Models
         public BackupSessionInfo SessionInfo { get; set; } = new();
         
         public List<MediaItem> Items { get; set; } = new();
+        
+        // Navigation properties
+        public User User { get; set; } = null!;
+        public Device Device { get; set; } = null!;
     }
     
     public class BackupSessionInfo

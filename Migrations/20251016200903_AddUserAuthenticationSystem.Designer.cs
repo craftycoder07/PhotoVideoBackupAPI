@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using PhotoVideoBackupAPI.Data;
@@ -11,9 +12,11 @@ using PhotoVideoBackupAPI.Data;
 namespace PhotoVideoBackupAPI.Migrations
 {
     [DbContext(typeof(MediaBackupDbContext))]
-    partial class MediaBackupDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251016200903_AddUserAuthenticationSystem")]
+    partial class AddUserAuthenticationSystem
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

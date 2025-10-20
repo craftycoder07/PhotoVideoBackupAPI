@@ -7,6 +7,9 @@ namespace PhotoVideoBackupAPI.Models
         public string Id { get; set; } = Guid.NewGuid().ToString();
         
         [Required]
+        public string UserId { get; set; } = string.Empty;
+        
+        [Required]
         public string DeviceName { get; set; } = string.Empty;
         
         [Required]
@@ -14,7 +17,7 @@ namespace PhotoVideoBackupAPI.Models
         
         public string? DeviceId { get; set; } // Unique device identifier
         
-        public string? ApiKey { get; set; } // For authentication
+        public string? ApiKey { get; set; } // For authentication (legacy)
         
         public DateTime RegisteredDate { get; set; } = DateTime.UtcNow;
         
@@ -27,6 +30,9 @@ namespace PhotoVideoBackupAPI.Models
         public List<MediaItem> MediaItems { get; set; } = new();
         
         public BackupStats Stats { get; set; } = new();
+        
+        // Navigation properties
+        public User User { get; set; } = null!;
     }
     
     public class DeviceSettings

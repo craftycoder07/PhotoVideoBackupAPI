@@ -7,6 +7,9 @@ namespace PhotoVideoBackupAPI.Models
         public string Id { get; set; } = Guid.NewGuid().ToString();
         
         [Required]
+        public string UserId { get; set; } = string.Empty;
+        
+        [Required]
         public string DeviceId { get; set; } = string.Empty;
         
         public string? SessionId { get; set; }
@@ -44,6 +47,11 @@ namespace PhotoVideoBackupAPI.Models
         public bool IsFavorite { get; set; } = false;
         
         public List<string> Tags { get; set; } = new();
+        
+        // Navigation properties
+        public User User { get; set; } = null!;
+        public Device Device { get; set; } = null!;
+        public BackupSession? Session { get; set; }
     }
     
     public class MediaMetadata
