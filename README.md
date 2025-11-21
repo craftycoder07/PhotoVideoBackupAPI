@@ -54,6 +54,45 @@ A .NET 8 Web API that acts like Google Photos for local backup. Mobile devices c
 
 5. Open your browser and navigate to `https://localhost:7109` to access the Swagger UI.
 
+## Configuration
+
+This application uses **environment variables** for all configuration. Environment variables automatically override values in `appsettings.json`.
+
+### Quick Setup
+
+Set the required environment variables:
+
+```bash
+# Database connection
+export ConnectionStrings__DefaultConnection="Host=localhost;Database=PhotoVideoBackup;Username=your_user;Password=your_password;Port=5432"
+
+# JWT Secret (required in production)
+export Jwt__Secret="your-super-secret-key-at-least-32-characters-long"
+
+# Storage path
+export StorageSettings__BasePath="/path/to/media/backups"
+```
+
+### Environment Variable Format
+
+For nested configuration properties, use double underscore (`__`):
+
+- `ConnectionStrings__DefaultConnection` → `ConnectionStrings:DefaultConnection`
+- `Jwt__Secret` → `Jwt:Secret`
+- `StorageSettings__BasePath` → `StorageSettings:BasePath`
+
+### Required Variables
+
+- `ConnectionStrings__DefaultConnection` - PostgreSQL connection string
+- `Jwt__Secret` - JWT signing key (required in production)
+- `StorageSettings__BasePath` - Path for media storage
+
+### Documentation
+
+See [ENVIRONMENT_VARIABLES.md](./ENVIRONMENT_VARIABLES.md) for complete documentation of all environment variables.
+
+**Note**: The `appsettings.json` file is tracked in git with safe defaults. Always use environment variables for sensitive data like passwords and secrets.
+
 ## API Architecture
 
 The API follows a modular design with separate controllers for each domain:

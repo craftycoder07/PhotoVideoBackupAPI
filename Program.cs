@@ -3,9 +3,12 @@ using PhotoVideoBackupAPI.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.Extensions.Configuration;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
+
+ConfigureConfiguration(builder);
 
 // Add services to the container.
 builder.Services.AddControllers();
@@ -26,7 +29,12 @@ builder.Services.AddScoped<IMediaBackupService, MediaBackupService>();
 builder.Services.AddScoped<IAuthService, JwtAuthService>();
 
 // Configure JWT Authentication
-var jwtSecret = builder.Configuration["Jwt:Secret"] ?? "your-super-secret-key-that-is-at-least-32-characters-long";
+// Environment variables override appsettings.json automatically
+// Use Jwt__Secret or Jwt:Secret environment variable
+var jwtSecret = builder.Configuration["Jwt:Secret"] 
+    ?? (builder.Environment.IsDevelopment() 
+        ? "development-key-change-in-production" 
+        : throw new InvalidOperationException("JWT Secret must be set via Jwt__Secret environment variable in production"));
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "PhotoVideoBackupAPI";
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -82,3 +90,39 @@ app.MapControllers();
 app.MapGet("/health", () => new { status = "healthy", timestamp = DateTime.UtcNow });
 
 app.Run();
+
+static void ConfigureConfiguration(WebApplicationBuilder builder)
+{
+    var environmentName = builder.Environment.EnvironmentName;
+
+    builder.Configuration.Sources.Clear();
+
+    builder.Configuration
+        .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+        .AddJsonFile($"appsettings.{environmentName}.json", optional: true, reloadOnChange: true)
+        .AddEnvironmentVariables(prefix: BuildEnvironmentVariablePrefix(environmentName));
+}
+
+static string BuildEnvironmentVariablePrefix(string environmentName)
+{
+    if (string.IsNullOrWhiteSpace(environmentName))
+    {
+        return "PixNest_";
+    }
+
+    var normalized = environmentName.Trim();
+
+    switch (normalized.ToLowerInvariant())
+    {
+        case "production":
+        case "prod":
+            return "PixNest_Prod_";
+        case "staging":
+            return "PixNest_Staging_";
+        case "development":
+        case "dev":
+            return "PixNest_Dev_";
+        default:
+            return $"PixNest_{normalized}_";
+    }
+}

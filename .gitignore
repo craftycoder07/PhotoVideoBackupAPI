@@ -374,11 +374,7 @@ Network Trash Folder
 Temporary Items
 .apdisk
 
-# Sensitive Configuration Files
-appsettings.Development.json
-appsettings.Production.json
-appsettings.Local.json
-appsettings.json
+
 
 # Test/Debug HTTP files
 *.http
