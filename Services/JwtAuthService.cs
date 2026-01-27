@@ -59,14 +59,19 @@ namespace PhotoVideoBackupAPI.Services
                 Email = request.Email,
                 PasswordHash = passwordHash,
                 CreatedAt = DateTime.UtcNow,
-                LastLoginAt = DateTime.UtcNow
+                LastLoginAt = DateTime.UtcNow,
+                RegisteredDate = DateTime.UtcNow,
+                LastSeen = DateTime.UtcNow,
+                ApiKey = GenerateApiKey(),
+                Settings = new DeviceSettings(),
+                Stats = new BackupStats()
             };
 
             _context.Users.Add(user);
             await _context.SaveChangesAsync();
 
-            // Create user storage directory
-            var userPath = Path.Combine(_baseStoragePath, user.Id);
+            // Create user storage directory using username
+            var userPath = Path.Combine(_baseStoragePath, user.Username);
             Directory.CreateDirectory(userPath);
 
             _logger.LogInformation("User registered: {Username} with storage path: {UserPath}", user.Username, userPath);
@@ -101,8 +106,9 @@ namespace PhotoVideoBackupAPI.Services
                 throw new UnauthorizedAccessException("Account is deactivated");
             }
 
-            // Update last login
+            // Update last login and last seen
             user.LastLoginAt = DateTime.UtcNow;
+            user.LastSeen = DateTime.UtcNow;
             await _context.SaveChangesAsync();
 
             _logger.LogInformation("User logged in: {Username}", user.Username);
@@ -270,6 +276,11 @@ namespace PhotoVideoBackupAPI.Services
             {
                 return false;
             }
+        }
+
+        private string GenerateApiKey()
+        {
+            return Convert.ToBase64String(Guid.NewGuid().ToByteArray()).Replace("/", "_").Replace("+", "-").Substring(0, 22);
         }
     }
 }

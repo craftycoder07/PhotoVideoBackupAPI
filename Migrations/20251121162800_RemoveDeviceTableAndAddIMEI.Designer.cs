@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using PhotoVideoBackupAPI.Data;
@@ -11,9 +12,11 @@ using PhotoVideoBackupAPI.Data;
 namespace PhotoVideoBackupAPI.Migrations
 {
     [DbContext(typeof(MediaBackupDbContext))]
-    partial class MediaBackupDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251121162800_RemoveDeviceTableAndAddIMEI")]
+    partial class RemoveDeviceTableAndAddIMEI
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -41,6 +44,10 @@ namespace PhotoVideoBackupAPI.Migrations
 
                     b.Property<int>("FailedBackups")
                         .HasColumnType("integer");
+
+                    b.Property<string>("IMEI")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
 
                     b.Property<int>("ProcessedItems")
                         .HasColumnType("integer");
@@ -73,6 +80,8 @@ namespace PhotoVideoBackupAPI.Migrations
                         .HasColumnType("character varying(50)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("IMEI");
 
                     b.HasIndex("StartTime");
 
@@ -113,6 +122,10 @@ namespace PhotoVideoBackupAPI.Migrations
                     b.Property<long>("FileSize")
                         .HasColumnType("bigint");
 
+                    b.Property<string>("IMEI")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
                     b.Property<bool>("IsFavorite")
                         .HasColumnType("boolean");
 
@@ -136,8 +149,6 @@ namespace PhotoVideoBackupAPI.Migrations
                         .HasColumnType("character varying(1000)");
 
                     b.Property<string>("SessionId")
-                        .IsRequired()
-                        .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
 
                     b.Property<int>("Status")
@@ -154,17 +165,26 @@ namespace PhotoVideoBackupAPI.Migrations
                     b.Property<int>("Type")
                         .HasColumnType("integer");
 
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("CreatedDate");
 
                     b.HasIndex("FileName");
 
+                    b.HasIndex("IMEI");
+
                     b.HasIndex("SessionId");
 
                     b.HasIndex("Status");
 
                     b.HasIndex("Type");
+
+                    b.HasIndex("UserId");
 
                     b.ToTable("MediaItems");
                 });
@@ -208,10 +228,6 @@ namespace PhotoVideoBackupAPI.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<string>("Stats")
-                        .IsRequired()
-                        .HasColumnType("text");
-
                     b.Property<string>("Username")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -247,10 +263,17 @@ namespace PhotoVideoBackupAPI.Migrations
                     b.HasOne("PhotoVideoBackupAPI.Models.BackupSession", "Session")
                         .WithMany("Items")
                         .HasForeignKey("SessionId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("PhotoVideoBackupAPI.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.Navigation("Session");
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("PhotoVideoBackupAPI.Models.BackupSession", b =>

@@ -73,22 +73,25 @@ namespace PhotoVideoBackupAPI.Features.Media
         }
 
         /// <summary>
-        /// Get device media with pagination
+        /// Get user media with pagination
         /// </summary>
-        [HttpGet("device/{deviceId}")]
-        public async Task<ActionResult<List<MediaItem>>> GetDeviceMedia(string deviceId, [FromQuery] int page = 1, [FromQuery] int pageSize = 50)
+        [HttpGet]
+        [Microsoft.AspNetCore.Authorization.Authorize]
+        public async Task<ActionResult<List<MediaItem>>> GetUserMedia([FromQuery] int page = 1, [FromQuery] int pageSize = 50)
         {
             try
             {
-                var mediaItems = await _mediaBackupService.GetDeviceMediaAsync(deviceId, page, pageSize);
+                var userId = User.FindFirst("userId")?.Value ?? throw new UnauthorizedAccessException("User ID not found in token");
+                var mediaItems = await _mediaBackupService.GetUserMediaAsync(userId, page, pageSize);
                 return Ok(mediaItems);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting media for device {DeviceId}", deviceId);
-                return StatusCode(500, new { error = "Failed to get device media", details = ex.Message });
+                _logger.LogError(ex, "Error getting media for user");
+                return StatusCode(500, new { error = "Failed to get user media", details = ex.Message });
             }
         }
+
 
         /// <summary>
         /// Delete media item
@@ -144,37 +147,41 @@ namespace PhotoVideoBackupAPI.Features.Media
         }
 
         /// <summary>
-        /// Search media items
+        /// Search user media items
         /// </summary>
-        [HttpGet("device/{deviceId}/search")]
-        public async Task<ActionResult<List<MediaItem>>> SearchMedia(string deviceId, [FromQuery] string? query = null, [FromQuery] DateTime? fromDate = null, [FromQuery] DateTime? toDate = null)
+        [HttpGet("search")]
+        [Microsoft.AspNetCore.Authorization.Authorize]
+        public async Task<ActionResult<List<MediaItem>>> SearchUserMedia([FromQuery] string? query = null, [FromQuery] DateTime? fromDate = null, [FromQuery] DateTime? toDate = null)
         {
             try
             {
-                var mediaItems = await _mediaBackupService.SearchMediaAsync(deviceId, query ?? "", fromDate, toDate);
+                var userId = User.FindFirst("userId")?.Value ?? throw new UnauthorizedAccessException("User ID not found in token");
+                var mediaItems = await _mediaBackupService.SearchUserMediaAsync(userId, query ?? "", fromDate, toDate);
                 return Ok(mediaItems);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error searching media for device {DeviceId}", deviceId);
+                _logger.LogError(ex, "Error searching media for user");
                 return StatusCode(500, new { error = "Failed to search media", details = ex.Message });
             }
         }
 
         /// <summary>
-        /// Get media by date range
+        /// Get media by date range for user
         /// </summary>
-        [HttpGet("device/{deviceId}/date-range")]
-        public async Task<ActionResult<List<MediaItem>>> GetMediaByDateRange(string deviceId, [FromQuery] DateTime fromDate, [FromQuery] DateTime toDate)
+        [HttpGet("date-range")]
+        [Microsoft.AspNetCore.Authorization.Authorize]
+        public async Task<ActionResult<List<MediaItem>>> GetMediaByDateRange([FromQuery] DateTime fromDate, [FromQuery] DateTime toDate)
         {
             try
             {
-                var mediaItems = await _mediaBackupService.GetMediaByDateRangeAsync(deviceId, fromDate, toDate);
+                var userId = User.FindFirst("userId")?.Value ?? throw new UnauthorizedAccessException("User ID not found in token");
+                var mediaItems = await _mediaBackupService.GetMediaByDateRangeAsync(userId, fromDate, toDate);
                 return Ok(mediaItems);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting media by date range for device {DeviceId}", deviceId);
+                _logger.LogError(ex, "Error getting media by date range for user");
                 return StatusCode(500, new { error = "Failed to get media by date range", details = ex.Message });
             }
         }

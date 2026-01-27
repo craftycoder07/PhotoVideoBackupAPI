@@ -29,122 +29,52 @@ namespace PhotoVideoBackupAPI.Services
             Directory.CreateDirectory(_thumbnailsPath);
         }
 
-        // Device Management
-        public async Task<Device> RegisterDeviceAsync(DeviceRegistrationRequest request)
+        // User Management
+        public async Task<User?> GetUserAsync(string userId)
         {
-            var deviceId = request.DeviceId ?? Guid.NewGuid().ToString();
-            var apiKey = GenerateApiKey();
-            
-            var device = new Device
+            return await _context.Users.FindAsync(userId);
+        }
+
+        public async Task<User> UpdateUserSettingsAsync(string userId, DeviceSettings settings)
+        {
+            var user = await _context.Users.FindAsync(userId);
+            if (user == null)
             {
-                Id = deviceId,
-                UserId = request.UserId,
-                DeviceName = request.DeviceName,
-                DeviceModel = request.DeviceModel,
-                DeviceId = deviceId,
-                ApiKey = apiKey,
-                Settings = request.Settings ?? new DeviceSettings()
-            };
-
-            _context.Devices.Add(device);
-            await _context.SaveChangesAsync();
-            
-            // Create device storage directory under user directory
-            var userPath = Path.Combine(_baseStoragePath, request.UserId);
-            var devicePath = Path.Combine(userPath, deviceId);
-            Directory.CreateDirectory(devicePath);
-            
-            _logger.LogInformation("Device registered: {DeviceName} ({DeviceId}) under user {UserId}", device.DeviceName, deviceId, request.UserId);
-            
-            return device;
-        }
-
-        public async Task<Device?> GetDeviceAsync(string deviceId)
-        {
-            return await _context.Devices
-                .Include(d => d.MediaItems)
-                .FirstOrDefaultAsync(d => d.Id == deviceId);
-        }
-
-        public async Task<List<Device>> GetAllDevicesAsync()
-        {
-            return await _context.Devices
-                .Include(d => d.MediaItems)
-                .ToListAsync();
-        }
-
-        public async Task<List<Device>> GetUserDevicesAsync(string userId)
-        {
-            return await _context.Devices
-                .Where(d => d.UserId == userId)
-                .Include(d => d.MediaItems)
-                .ToListAsync();
-        }
-
-        public async Task<Device> UpdateDeviceSettingsAsync(string deviceId, DeviceSettings settings)
-        {
-            var device = await _context.Devices.FindAsync(deviceId);
-            if (device == null)
-            {
-                throw new ArgumentException($"Device with ID {deviceId} not found");
+                throw new ArgumentException($"User with ID {userId} not found");
             }
 
-            device.Settings = settings;
-            device.LastSeen = DateTime.UtcNow;
+            user.Settings = settings;
+            user.LastSeen = DateTime.UtcNow;
             
             await _context.SaveChangesAsync();
             
-            _logger.LogInformation("Device settings updated for: {DeviceName}", device.DeviceName);
+            _logger.LogInformation("User settings updated for: {Username}", user.Username);
             
-            return device;
-        }
-
-        public async Task<bool> DeleteDeviceAsync(string deviceId)
-        {
-            var device = await _context.Devices.FindAsync(deviceId);
-            if (device == null)
-            {
-                return false;
-            }
-
-            _context.Devices.Remove(device);
-            await _context.SaveChangesAsync();
-            
-            // Delete device storage directory
-            var userPath = Path.Combine(_baseStoragePath, device.UserId);
-            var devicePath = Path.Combine(userPath, deviceId);
-            if (Directory.Exists(devicePath))
-            {
-                Directory.Delete(devicePath, true);
-            }
-            
-            _logger.LogInformation("Device deleted: {DeviceName}", device.DeviceName);
-            return true;
+            return user;
         }
 
         // Backup Sessions
-        public async Task<BackupSession> StartBackupSessionAsync(string deviceId, BackupSessionInfo sessionInfo)
+        public async Task<BackupSession> StartBackupSessionAsync(string userId, BackupSessionInfo sessionInfo)
         {
-            var device = await _context.Devices.FindAsync(deviceId);
-            if (device == null)
+            var user = await _context.Users.FindAsync(userId);
+            if (user == null)
             {
-                throw new ArgumentException($"Device with ID {deviceId} not found");
+                throw new ArgumentException($"User with ID {userId} not found");
             }
 
             var session = new BackupSession
             {
-                UserId = device.UserId,
-                DeviceId = deviceId,
+                UserId = userId,
                 SessionInfo = sessionInfo
             };
 
             _context.BackupSessions.Add(session);
-            device.LastSeen = DateTime.UtcNow;
+            user.LastSeen = DateTime.UtcNow;
             
             await _context.SaveChangesAsync();
             
-            _logger.LogInformation("Backup session started for device: {DeviceName} (Session: {SessionId})", 
-                device.DeviceName, session.Id);
+            _logger.LogInformation("Backup session started for user: {Username} (Session: {SessionId})", 
+                user.Username, session.Id);
             
             return session;
         }
@@ -189,10 +119,10 @@ namespace PhotoVideoBackupAPI.Services
             return session;
         }
 
-        public async Task<List<BackupSession>> GetDeviceBackupSessionsAsync(string deviceId)
+        public async Task<List<BackupSession>> GetUserBackupSessionsAsync(string userId)
         {
             return await _context.BackupSessions
-                .Where(s => s.DeviceId == deviceId)
+                .Where(s => s.UserId == userId)
                 .OrderByDescending(s => s.StartTime)
                 .ToListAsync();
         }
@@ -218,11 +148,19 @@ namespace PhotoVideoBackupAPI.Services
                 throw new InvalidOperationException("File size exceeds maximum allowed size");
             }
 
+            // Get user to access username for storage path
+            var user = await _context.Users.FindAsync(session.UserId);
+            if (user == null)
+            {
+                throw new ArgumentException($"User with ID {session.UserId} not found");
+            }
+
             // Generate unique filename
             var fileName = $"{Guid.NewGuid()}{extension}";
-            var userPath = Path.Combine(_baseStoragePath, session.UserId);
-            var devicePath = Path.Combine(userPath, session.DeviceId);
-            var filePath = Path.Combine(devicePath, fileName);
+            // Use username for storage path instead of userId
+            var userPath = Path.Combine(_baseStoragePath, user.Username);
+            Directory.CreateDirectory(userPath);
+            var filePath = Path.Combine(userPath, fileName);
 
             // Save file
             using (var stream = new FileStream(filePath, FileMode.Create))
@@ -243,8 +181,6 @@ namespace PhotoVideoBackupAPI.Services
             // Create media item
             var mediaItem = new MediaItem
             {
-                UserId = session.UserId,
-                DeviceId = session.DeviceId,
                 SessionId = sessionId,
                 FileName = file.FileName,
                 ServerPath = filePath,
@@ -266,22 +202,22 @@ namespace PhotoVideoBackupAPI.Services
             session.SuccessfulBackups++;
             session.TotalSize += file.Length;
 
-            // Update device stats
-            var device = await _context.Devices.FindAsync(session.DeviceId);
-            if (device != null)
-            {
-                device.MediaItems.Add(mediaItem);
-                device.Stats.TotalSize += file.Length;
-                device.Stats.LastBackupDate = DateTime.UtcNow;
-                
-                if (mediaType == MediaType.Photo)
-                    device.Stats.TotalPhotos++;
-                else
-                    device.Stats.TotalVideos++;
-                
-                // Mark the device as modified so EF detects the JSON changes
-                _context.Entry(device).Property(d => d.Stats).IsModified = true;
-            }
+            // Update user stats
+            user.Stats.TotalSize += file.Length;
+            user.Stats.LastBackupDate = DateTime.UtcNow;
+            
+            if (mediaType == MediaType.Photo)
+                user.Stats.TotalPhotos++;
+            else
+                user.Stats.TotalVideos++;
+            
+            if (mediaItem.Status == BackupStatus.Completed)
+                user.Stats.SuccessfulBackups++;
+            else if (mediaItem.Status == BackupStatus.Failed)
+                user.Stats.FailedBackups++;
+            
+            // Mark the user as modified so EF detects the JSON changes
+            _context.Entry(user).Property(u => u.Stats).IsModified = true;
 
             await _context.SaveChangesAsync();
 
@@ -301,10 +237,11 @@ namespace PhotoVideoBackupAPI.Services
             return mediaItem;
         }
 
-        public async Task<List<MediaItem>> GetDeviceMediaAsync(string deviceId, int page = 1, int pageSize = 50)
+        public async Task<List<MediaItem>> GetUserMediaAsync(string userId, int page = 1, int pageSize = 50)
         {
             return await _context.MediaItems
-                .Where(m => m.DeviceId == deviceId)
+                .Include(m => m.Session)
+                .Where(m => m.Session.UserId == userId)
                 .OrderByDescending(m => m.CreatedDate)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
@@ -503,31 +440,32 @@ namespace PhotoVideoBackupAPI.Services
         }
 
         // Statistics
-        public async Task<BackupStats> GetDeviceStatsAsync(string deviceId)
+        public async Task<BackupStats> GetUserStatsAsync(string userId)
         {
-            var device = await _context.Devices.FindAsync(deviceId);
-            if (device == null)
+            var user = await _context.Users.FindAsync(userId);
+            if (user == null)
             {
-                throw new ArgumentException($"Device with ID {deviceId} not found");
+                throw new ArgumentException($"User with ID {userId} not found");
             }
             
-            return device.Stats;
+            // Return stats from user object (stored in database)
+            return user.Stats;
         }
 
         public async Task<SystemStats> GetSystemStatsAsync()
         {
-            var devices = await _context.Devices.ToListAsync();
+            var users = await _context.Users.ToListAsync();
             var mediaItems = await _context.MediaItems.ToListAsync();
             
             var stats = new SystemStats
             {
-                TotalDevices = devices.Count,
-                ActiveDevices = devices.Count(d => d.IsActive),
+                TotalUsers = users.Count,
+                ActiveUsers = users.Count(u => u.IsActive),
                 TotalMediaItems = mediaItems.Count,
                 TotalPhotos = mediaItems.Count(m => m.Type == MediaType.Photo),
                 TotalVideos = mediaItems.Count(m => m.Type == MediaType.Video),
                 TotalStorageUsed = mediaItems.Sum(m => m.FileSize),
-                LastBackupActivity = devices.Max(d => d.LastSeen)
+                LastBackupActivity = users.Any() ? users.Max(u => u.LastSeen) : DateTime.MinValue
             };
 
             // Calculate available storage
@@ -545,9 +483,11 @@ namespace PhotoVideoBackupAPI.Services
         }
 
         // Search and filtering
-        public async Task<List<MediaItem>> SearchMediaAsync(string deviceId, string query, DateTime? fromDate = null, DateTime? toDate = null)
+        public async Task<List<MediaItem>> SearchUserMediaAsync(string userId, string query, DateTime? fromDate = null, DateTime? toDate = null)
         {
-            var queryable = _context.MediaItems.Where(m => m.DeviceId == deviceId);
+            var queryable = _context.MediaItems
+                .Include(m => m.Session)
+                .Where(m => m.Session.UserId == userId);
             
             if (!string.IsNullOrEmpty(query))
             {
@@ -571,10 +511,11 @@ namespace PhotoVideoBackupAPI.Services
                 .ToListAsync();
         }
 
-        public async Task<List<MediaItem>> GetMediaByDateRangeAsync(string deviceId, DateTime fromDate, DateTime toDate)
+        public async Task<List<MediaItem>> GetMediaByDateRangeAsync(string userId, DateTime fromDate, DateTime toDate)
         {
             return await _context.MediaItems
-                .Where(m => m.DeviceId == deviceId)
+                .Include(m => m.Session)
+                .Where(m => m.Session.UserId == userId)
                 .Where(m => m.CreatedDate >= fromDate && m.CreatedDate <= toDate)
                 .OrderByDescending(m => m.CreatedDate)
                 .ToListAsync();

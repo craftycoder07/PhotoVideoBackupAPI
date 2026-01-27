@@ -4,24 +4,20 @@ namespace PhotoVideoBackupAPI.Services
 {
     public interface IMediaBackupService
     {
-        // Device management
-        Task<Device> RegisterDeviceAsync(DeviceRegistrationRequest request);
-        Task<Device?> GetDeviceAsync(string deviceId);
-        Task<List<Device>> GetAllDevicesAsync();
-        Task<List<Device>> GetUserDevicesAsync(string userId);
-        Task<Device> UpdateDeviceSettingsAsync(string deviceId, DeviceSettings settings);
-        Task<bool> DeleteDeviceAsync(string deviceId);
+        // User settings management
+        Task<User> UpdateUserSettingsAsync(string userId, DeviceSettings settings);
+        Task<User?> GetUserAsync(string userId);
         
         // Backup sessions
-        Task<BackupSession> StartBackupSessionAsync(string deviceId, BackupSessionInfo sessionInfo);
+        Task<BackupSession> StartBackupSessionAsync(string userId, BackupSessionInfo sessionInfo);
         Task<BackupSession> GetBackupSessionAsync(string sessionId);
         Task<BackupSession> UpdateBackupSessionAsync(string sessionId, BackupSessionUpdateRequest request);
-        Task<List<BackupSession>> GetDeviceBackupSessionsAsync(string deviceId);
+        Task<List<BackupSession>> GetUserBackupSessionsAsync(string userId);
         
         // Media upload
         Task<MediaItem> UploadMediaAsync(string sessionId, IFormFile file, MediaMetadata? metadata = null);
         Task<MediaItem> GetMediaItemAsync(string mediaId);
-        Task<List<MediaItem>> GetDeviceMediaAsync(string deviceId, int page = 1, int pageSize = 50);
+        Task<List<MediaItem>> GetUserMediaAsync(string userId, int page = 1, int pageSize = 50);
         Task<bool> DeleteMediaItemAsync(string mediaId);
         
         // Thumbnails
@@ -29,21 +25,12 @@ namespace PhotoVideoBackupAPI.Services
         Task<byte[]> GetThumbnailAsync(string mediaId);
         
         // Statistics
-        Task<BackupStats> GetDeviceStatsAsync(string deviceId);
+        Task<BackupStats> GetUserStatsAsync(string userId);
         Task<SystemStats> GetSystemStatsAsync();
         
         // Search and filtering
-        Task<List<MediaItem>> SearchMediaAsync(string deviceId, string query, DateTime? fromDate = null, DateTime? toDate = null);
-        Task<List<MediaItem>> GetMediaByDateRangeAsync(string deviceId, DateTime fromDate, DateTime toDate);
-    }
-    
-    public class DeviceRegistrationRequest
-    {
-        public string UserId { get; set; } = string.Empty;
-        public string DeviceName { get; set; } = string.Empty;
-        public string DeviceModel { get; set; } = string.Empty;
-        public string? DeviceId { get; set; }
-        public DeviceSettings? Settings { get; set; }
+        Task<List<MediaItem>> SearchUserMediaAsync(string userId, string query, DateTime? fromDate = null, DateTime? toDate = null);
+        Task<List<MediaItem>> GetMediaByDateRangeAsync(string userId, DateTime fromDate, DateTime toDate);
     }
     
     public class BackupSessionUpdateRequest
@@ -59,8 +46,8 @@ namespace PhotoVideoBackupAPI.Services
     
     public class SystemStats
     {
-        public int TotalDevices { get; set; }
-        public int ActiveDevices { get; set; }
+        public int TotalUsers { get; set; }
+        public int ActiveUsers { get; set; }
         public long TotalStorageUsed { get; set; }
         public long AvailableStorage { get; set; }
         public int TotalMediaItems { get; set; }

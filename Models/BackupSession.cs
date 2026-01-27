@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 
 namespace PhotoVideoBackupAPI.Models
 {
@@ -8,9 +9,6 @@ namespace PhotoVideoBackupAPI.Models
         
         [Required]
         public string UserId { get; set; } = string.Empty;
-        
-        [Required]
-        public string DeviceId { get; set; } = string.Empty;
         
         public DateTime StartTime { get; set; } = DateTime.UtcNow;
         
@@ -36,11 +34,12 @@ namespace PhotoVideoBackupAPI.Models
         
         public BackupSessionInfo SessionInfo { get; set; } = new();
         
+        // Items can be serialized, but Items themselves have JsonIgnore on User/Session
         public List<MediaItem> Items { get; set; } = new();
         
         // Navigation properties
+        [JsonIgnore]
         public User User { get; set; } = null!;
-        public Device Device { get; set; } = null!;
     }
     
     public class BackupSessionInfo

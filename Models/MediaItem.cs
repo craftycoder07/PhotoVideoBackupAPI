@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 
 namespace PhotoVideoBackupAPI.Models
 {
@@ -7,12 +8,7 @@ namespace PhotoVideoBackupAPI.Models
         public string Id { get; set; } = Guid.NewGuid().ToString();
         
         [Required]
-        public string UserId { get; set; } = string.Empty;
-        
-        [Required]
-        public string DeviceId { get; set; } = string.Empty;
-        
-        public string? SessionId { get; set; }
+        public string SessionId { get; set; } = string.Empty;
         
         [Required]
         public string FileName { get; set; } = string.Empty;
@@ -49,9 +45,8 @@ namespace PhotoVideoBackupAPI.Models
         public List<string> Tags { get; set; } = new();
         
         // Navigation properties
-        public User User { get; set; } = null!;
-        public Device Device { get; set; } = null!;
-        public BackupSession? Session { get; set; }
+        [JsonIgnore]
+        public BackupSession Session { get; set; } = null!;
     }
     
     public class MediaMetadata

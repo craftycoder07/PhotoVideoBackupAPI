@@ -18,14 +18,22 @@ namespace PhotoVideoBackupAPI.Features.Stats
         }
 
         /// <summary>
-        /// Get device backup statistics
+        /// Get user backup statistics
         /// </summary>
-        [HttpGet("device/{deviceId}")]
-        public async Task<ActionResult<BackupStats>> GetDeviceStats(string deviceId)
+        [HttpGet("user/{userId}")]
+        [Microsoft.AspNetCore.Authorization.Authorize]
+        public async Task<ActionResult<BackupStats>> GetUserStats(string userId)
         {
             try
             {
-                var stats = await _mediaBackupService.GetDeviceStatsAsync(deviceId);
+                // Verify the user is accessing their own stats
+                var currentUserId = User.FindFirst("userId")?.Value;
+                if (currentUserId != userId)
+                {
+                    return Unauthorized(new { error = "Unauthorized to access this user's stats" });
+                }
+
+                var stats = await _mediaBackupService.GetUserStatsAsync(userId);
                 return Ok(stats);
             }
             catch (ArgumentException ex)
@@ -34,8 +42,8 @@ namespace PhotoVideoBackupAPI.Features.Stats
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting stats for device {DeviceId}", deviceId);
-                return StatusCode(500, new { error = "Failed to get device stats", details = ex.Message });
+                _logger.LogError(ex, "Error getting stats for user {UserId}", userId);
+                return StatusCode(500, new { error = "Failed to get user stats", details = ex.Message });
             }
         }
 

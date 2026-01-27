@@ -1,7 +1,44 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 
 namespace PhotoVideoBackupAPI.Models
 {
+    public class DeviceSettings
+    {
+        public bool AutoBackupEnabled { get; set; } = true;
+        
+        public TimeSpan BackupStartTime { get; set; } = new TimeSpan(22, 0, 0); // 10 PM
+        
+        public TimeSpan BackupEndTime { get; set; } = new TimeSpan(6, 0, 0); // 6 AM
+        
+        public bool BackupOnlyOnWifi { get; set; } = true;
+        
+        public bool BackupOnlyWhenCharging { get; set; } = false;
+        
+        public string[] AllowedExtensions { get; set; } = { ".jpg", ".jpeg", ".png", ".gif", ".heic", ".mp4", ".mov" };
+        
+        public long MaxFileSize { get; set; } = 100 * 1024 * 1024; // 100MB
+        
+        public bool CompressImages { get; set; } = false;
+        
+        public int ImageQuality { get; set; } = 85; // 0-100
+    }
+    
+    public class BackupStats
+    {
+        public int TotalPhotos { get; set; }
+        
+        public int TotalVideos { get; set; }
+        
+        public long TotalSize { get; set; }
+        
+        public DateTime LastBackupDate { get; set; }
+        
+        public int FailedBackups { get; set; }
+        
+        public int SuccessfulBackups { get; set; }
+    }
+    
     public class User
     {
         public string Id { get; set; } = Guid.NewGuid().ToString();
@@ -23,8 +60,19 @@ namespace PhotoVideoBackupAPI.Models
         
         public bool IsActive { get; set; } = true;
         
+        // Device-related fields moved from Device table
+        public string? ApiKey { get; set; } // For authentication (legacy)
+        
+        public DateTime RegisteredDate { get; set; } = DateTime.UtcNow;
+        
+        public DateTime LastSeen { get; set; } = DateTime.UtcNow;
+        
+        public DeviceSettings Settings { get; set; } = new();
+        
+        public BackupStats Stats { get; set; } = new();
+        
         // Navigation properties
-        public List<Device> Devices { get; set; } = new();
+        [JsonIgnore]
         public List<BackupSession> BackupSessions { get; set; } = new();
     }
     
@@ -67,4 +115,5 @@ namespace PhotoVideoBackupAPI.Models
         public string RefreshToken { get; set; } = string.Empty;
     }
 }
+
 

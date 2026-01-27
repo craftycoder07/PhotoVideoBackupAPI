@@ -34,15 +34,8 @@ namespace PhotoVideoBackupAPI.Features.Sessions
             try
             {
                 var userId = GetCurrentUserId();
-                // Verify the device belongs to the current user
-                var device = await _mediaBackupService.GetDeviceAsync(request.DeviceId);
-                if (device == null || device.UserId != userId)
-                {
-                    return NotFound(new { error = "Device not found" });
-                }
-
-                var session = await _mediaBackupService.StartBackupSessionAsync(request.DeviceId, request.SessionInfo);
-                _logger.LogInformation("Backup session started: {SessionId} for device {DeviceId} by user {UserId}", session.Id, request.DeviceId, userId);
+                var session = await _mediaBackupService.StartBackupSessionAsync(userId, request.SessionInfo);
+                _logger.LogInformation("Backup session started: {SessionId} by user {UserId}", session.Id, userId);
                 
                 return Ok(session);
             }
@@ -52,7 +45,7 @@ namespace PhotoVideoBackupAPI.Features.Sessions
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error starting backup session for device {DeviceId}", request.DeviceId);
+                _logger.LogError(ex, "Error starting backup session");
                 return StatusCode(500, new { error = "Failed to start backup session", details = ex.Message });
             }
         }
@@ -102,27 +95,28 @@ namespace PhotoVideoBackupAPI.Features.Sessions
         }
 
         /// <summary>
-        /// Get all backup sessions for a device
+        /// Get all backup sessions for the current user
         /// </summary>
-        [HttpGet("device/{deviceId}")]
-        public async Task<ActionResult<List<BackupSession>>> GetDeviceBackupSessions(string deviceId)
+        [HttpGet]
+        public async Task<ActionResult<List<BackupSession>>> GetUserBackupSessions()
         {
             try
             {
-                var sessions = await _mediaBackupService.GetDeviceBackupSessionsAsync(deviceId);
+                var userId = GetCurrentUserId();
+                var sessions = await _mediaBackupService.GetUserBackupSessionsAsync(userId);
                 return Ok(sessions);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting backup sessions for device {DeviceId}", deviceId);
+                _logger.LogError(ex, "Error getting backup sessions for user");
                 return StatusCode(500, new { error = "Failed to get backup sessions", details = ex.Message });
             }
         }
+
     }
 
     public class StartSessionRequest
     {
-        public string DeviceId { get; set; } = string.Empty;
         public BackupSessionInfo SessionInfo { get; set; } = new();
     }
 }
