@@ -10,27 +10,13 @@ namespace PhotoVideoBackupAPI.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<string>(
-                name: "Stats",
-                table: "Users",
-                type: "text",
-                nullable: false,
-                defaultValue: "");
-
-            // Set default empty Stats for all existing users
-            migrationBuilder.Sql(@"
-                UPDATE ""Users""
-                SET ""Stats"" = '{}'
-                WHERE ""Stats"" IS NULL OR ""Stats"" = '';
-            ");
+            // Stats column was already added to Users in RemoveDeviceTableAndAddIMEI migration.
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "Stats",
-                table: "Users");
+            // Stats column is managed by RemoveDeviceTableAndAddIMEI migration.
         }
     }
 }
