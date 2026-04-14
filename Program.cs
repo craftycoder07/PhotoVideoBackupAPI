@@ -1,95 +1,123 @@
 using PhotoVideoBackupAPI.Services;
 using PhotoVideoBackupAPI.Data;
+using PhotoVideoBackupAPI.Infrastructure.Logging;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.Extensions.Configuration;
+using Serilog;
 using System.Text;
 
-var builder = WebApplication.CreateBuilder(args);
+// Stage 1: Bootstrap logger — captures fatal errors during host setup before
+// IConfiguration is available. Replaced by the full logger once the host is built.
+SerilogConfiguration.CreateBootstrapLogger();
 
-ConfigureConfiguration(builder);
-
-// Add services to the container.
-builder.Services.AddControllers();
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen(c =>
+try
 {
-    c.SwaggerDoc("v1", new() { Title = "Mobile Media Backup API", Version = "v1" });
-    c.TagActionsBy(api => new[] { api.GroupName ?? api.ActionDescriptor.RouteValues["controller"] });
-    c.DocInclusionPredicate((name, api) => true);
-});
+    Log.Information("Starting PhotoVideoBackupAPI");
 
-// Add Entity Framework
-builder.Services.AddDbContext<MediaBackupDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+    var builder = WebApplication.CreateBuilder(args);
 
-// Register services
-builder.Services.AddScoped<IMediaBackupService, MediaBackupService>();
-builder.Services.AddScoped<IAuthService, JwtAuthService>();
+    // Must run first — clears default config sources and adds our custom chain
+    ConfigureConfiguration(builder);
 
-// Configure JWT Authentication
-// Environment variables override appsettings.json automatically
-// Use Jwt__Secret or Jwt:Secret environment variable
-var jwtSecret = builder.Configuration["Jwt:Secret"] 
-    ?? (builder.Environment.IsDevelopment() 
-        ? "development-key-change-in-production" 
-        : throw new InvalidOperationException("JWT Secret must be set via Jwt__Secret environment variable in production"));
-var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "PhotoVideoBackupAPI";
+    // Stage 2: Replace bootstrap logger with full Serilog logger now that
+    // IConfiguration is built and the Serilog section in appsettings.json is readable.
+    builder.Host.AddSerilogLogging();
 
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
+    // Add services to the container.
+    builder.Services.AddControllers();
+    builder.Services.AddEndpointsApiExplorer();
+    builder.Services.AddSwaggerGen(c =>
     {
-        options.TokenValidationParameters = new TokenValidationParameters
+        c.SwaggerDoc("v1", new() { Title = "Mobile Media Backup API", Version = "v1" });
+        c.TagActionsBy(api => new[] { api.GroupName ?? api.ActionDescriptor.RouteValues["controller"] });
+        c.DocInclusionPredicate((name, api) => true);
+    });
+
+    // Add Entity Framework
+    builder.Services.AddDbContext<MediaBackupDbContext>(options =>
+        options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+    // Register services
+    builder.Services.AddScoped<IMediaBackupService, MediaBackupService>();
+    builder.Services.AddScoped<IAuthService, JwtAuthService>();
+
+    // Configure JWT Authentication
+    // Environment variables override appsettings.json automatically
+    // Use Jwt__Secret or Jwt:Secret environment variable
+    var jwtSecret = builder.Configuration["Jwt:Secret"]
+        ?? (builder.Environment.IsDevelopment()
+            ? "development-key-change-in-production"
+            : throw new InvalidOperationException("JWT Secret must be set via Jwt__Secret environment variable in production"));
+    var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "PhotoVideoBackupAPI";
+
+    builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+        .AddJwtBearer(options =>
         {
-            ValidateIssuerSigningKey = true,
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.ASCII.GetBytes(jwtSecret)),
-            ValidateIssuer = true,
-            ValidIssuer = jwtIssuer,
-            ValidateAudience = false,
-            ClockSkew = TimeSpan.Zero
-        };
-    });
+            options.TokenValidationParameters = new TokenValidationParameters
+            {
+                ValidateIssuerSigningKey = true,
+                IssuerSigningKey = new SymmetricSecurityKey(Encoding.ASCII.GetBytes(jwtSecret)),
+                ValidateIssuer = true,
+                ValidIssuer = jwtIssuer,
+                ValidateAudience = false,
+                ClockSkew = TimeSpan.Zero
+            };
+        });
 
-builder.Services.AddAuthorization();
+    builder.Services.AddAuthorization();
 
-// Add CORS
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy("AllowAll", policy =>
+    // Add CORS
+    builder.Services.AddCors(options =>
     {
-        policy.AllowAnyOrigin()
-              .AllowAnyMethod()
-              .AllowAnyHeader();
+        options.AddPolicy("AllowAll", policy =>
+        {
+            policy.AllowAnyOrigin()
+                  .AllowAnyMethod()
+                  .AllowAnyHeader();
+        });
     });
-});
 
-// Add logging
-builder.Services.AddLogging();
+    var app = builder.Build();
 
-var app = builder.Build();
-
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI(c =>
+    // Configure the HTTP request pipeline.
+    if (app.Environment.IsDevelopment())
     {
-        c.SwaggerEndpoint("/swagger/v1/swagger.json", "Mobile Media Backup API v1");
-        c.RoutePrefix = string.Empty; // Serve Swagger UI at root
-    });
+        app.UseSwagger();
+        app.UseSwaggerUI(c =>
+        {
+            c.SwaggerEndpoint("/swagger/v1/swagger.json", "Mobile Media Backup API v1");
+            c.RoutePrefix = string.Empty; // Serve Swagger UI at root
+        });
+    }
+
+    app.UseHttpsRedirection();
+
+    // Request logging middleware — reads Serilog:RequestLogging config to determine
+    // whether to log all requests, errors only, or skip entirely.
+    app.UseConfiguredRequestLogging(builder.Configuration);
+
+    app.UseCors("AllowAll");
+    app.UseAuthentication();
+    app.UseAuthorization();
+    app.MapControllers();
+
+    // Health check endpoint
+    app.MapGet("/health", () => new { status = "healthy", timestamp = DateTime.UtcNow });
+
+    app.Run();
 }
-
-app.UseHttpsRedirection();
-app.UseCors("AllowAll");
-app.UseAuthentication();
-app.UseAuthorization();
-app.MapControllers();
-
-// Health check endpoint
-app.MapGet("/health", () => new { status = "healthy", timestamp = DateTime.UtcNow });
-
-app.Run();
+catch (Exception ex) when (ex is not HostAbortedException)
+{
+    // HostAbortedException is thrown intentionally by EF Core during
+    // 'dotnet ef migrations add' — catching it would break migration commands.
+    Log.Fatal(ex, "Application terminated unexpectedly");
+}
+finally
+{
+    Log.CloseAndFlush();
+}
 
 static void ConfigureConfiguration(WebApplicationBuilder builder)
 {
