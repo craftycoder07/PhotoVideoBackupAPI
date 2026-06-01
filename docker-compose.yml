@@ -55,7 +55,7 @@ services:
     # Variables use standard .NET naming: __ maps to : (e.g. ConnectionStrings__DefaultConnection
     # → ConnectionStrings:DefaultConnection), picked up by AddEnvironmentVariables() in Program.cs.
     environment:
-      ASPNETCORE_ENVIRONMENT: Docker
+      ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: "http://+:8080"   # HTTP only; TLS belongs at the reverse proxy
       ConnectionStrings__DefaultConnection: "Host=postgres;Port=5432;Database=PhotoVideoBackup;Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
       Jwt__Secret: "${JWT_SECRET}"

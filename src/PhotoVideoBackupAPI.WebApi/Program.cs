@@ -47,7 +47,7 @@ try
     // Environment variables override appsettings.json automatically
     // Use Jwt__Secret or Jwt:Secret environment variable
     var jwtSecret = builder.Configuration["Jwt:Secret"]
-        ?? (builder.Environment.IsDevelopment() || builder.Environment.IsEnvironment("Docker")
+        ?? (builder.Environment.IsDevelopment()
             ? "development-key-change-in-production"
             : throw new InvalidOperationException("JWT Secret must be set via Jwt__Secret environment variable in production"));
     var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "PhotoVideoBackupAPI";
@@ -84,7 +84,7 @@ try
     // Configure the HTTP request pipeline.
     // Show Swagger in Development and Docker environments (Docker runs HTTP-only,
     // no TLS cert available inside the container).
-    if (app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Docker"))
+    if (app.Environment.IsDevelopment())
     {
         app.UseSwagger();
         app.UseSwaggerUI(c =>
@@ -96,7 +96,7 @@ try
 
     // Skip HTTPS redirect inside Docker — the container speaks HTTP only.
     // TLS termination belongs at the reverse proxy / load balancer layer.
-    if (!app.Environment.IsEnvironment("Docker"))
+    if (!app.Environment.IsDevelopment())
     {
         app.UseHttpsRedirection();
     }
@@ -116,7 +116,7 @@ try
     // Auto-apply pending EF Core migrations on startup in Docker and Development.
     // In Production: generate a SQL script with `dotnet ef migrations script --idempotent`
     // and apply it directly on the server.
-    if (app.Environment.IsEnvironment("Docker") || app.Environment.IsDevelopment())
+    if (app.Environment.IsDevelopment())
     {
         using var scope = app.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<MediaBackupDbContext>();

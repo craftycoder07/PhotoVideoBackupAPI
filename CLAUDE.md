@@ -38,9 +38,9 @@ PhotoVideoBackupAPI.sln
 1. `appsettings.json`
 2. `appsettings.{Environment}.json`
 3. Environment variables (`ConnectionStrings__DefaultConnection`, `Jwt__Secret`, etc.)
-4. Prefixed env vars (`PixNest_Dev_*`, `PixNest_Docker_*`, `PixNest_Prod_*`)
+4. Prefixed env vars (`PixNest_Dev_*`, `PixNest_Prod_*`)
 
-**Environments**: `Development`, `Docker`, `Production`. Docker skips HTTPS redirect and TLS — TLS terminates at a reverse proxy. Auto-migration runs in Development and Docker; in Production, generate and apply a SQL script manually.
+**Environments**: `Development` and `Production`. Development is the dev workflow — always run via `docker compose up` (sets `ASPNETCORE_ENVIRONMENT: Development`). Development skips HTTPS redirect (TLS terminates at the reverse proxy) and auto-applies EF Core migrations on startup. Production requires migrations to be applied manually via an idempotent SQL script.
 
 **Logging**: Two-stage Serilog. Bootstrap logger starts first (console only). Full logger reads from `appsettings.json` Serilog section once config is built. Sinks: Console, File (rolling daily, `logs/pixnest-*.log`), and Seq (`http://localhost:5341`). Request logging respects `Serilog:RequestLogging:Enabled` and `ErrorsOnly` config keys.
 
@@ -75,10 +75,10 @@ Before running locally, set these (or use a `.env` file for Docker):
 | Variable | Purpose |
 |---|---|
 | `ConnectionStrings__DefaultConnection` | PostgreSQL connection string |
-| `Jwt__Secret` | JWT signing key (≥32 chars); in Development/Docker a hardcoded fallback is used |
+| `Jwt__Secret` | JWT signing key (≥32 chars); in Development a hardcoded fallback is used |
 | `StorageSettings__BasePath` | Absolute path for media file storage |
 
-For Docker Compose, also set `POSTGRES_USER`, `POSTGRES_PASSWORD`, `JWT_SECRET`, `SEQ_ADMIN_PASSWORD`, and `MEDIA_STORAGE_PATH` in `.env`.
+For Docker Compose, set `POSTGRES_USER`, `POSTGRES_PASSWORD`, `JWT_SECRET`, `SEQ_ADMIN_PASSWORD`, and `MEDIA_STORAGE_PATH` in a `.env` file at the repo root.
 
 ## Docker Services
 
@@ -88,4 +88,4 @@ For Docker Compose, also set `POSTGRES_USER`, `POSTGRES_PASSWORD`, `JWT_SECRET`,
 | `postgres` | 5433 | PostgreSQL 16 (avoids conflict with local Postgres on 5432) |
 | `seq` | 5341 | Structured log UI |
 
-Swagger UI is served at the root path (`/`) in Development and Docker environments.
+Swagger UI is served at the root path (`/`) in the Development environment.
