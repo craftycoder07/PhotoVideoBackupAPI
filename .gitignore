@@ -393,8 +393,10 @@ Folder.DotSettings.user
 # Environment and secrets
 .env
 .env.local
+.env.docker
 secrets.json
 appsettings.secrets.json
+# Docker local secrets (use .env — Docker Compose auto-loads it for ${VAR} substitution)
 
 # RTF and temporary files
 *.rtf

@@ -47,7 +47,7 @@ try
     // Environment variables override appsettings.json automatically
     // Use Jwt__Secret or Jwt:Secret environment variable
     var jwtSecret = builder.Configuration["Jwt:Secret"]
-        ?? (builder.Environment.IsDevelopment()
+        ?? (builder.Environment.IsDevelopment() || builder.Environment.IsEnvironment("Docker")
             ? "development-key-change-in-production"
             : throw new InvalidOperationException("JWT Secret must be set via Jwt__Secret environment variable in production"));
     var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "PhotoVideoBackupAPI";
@@ -82,7 +82,9 @@ try
     var app = builder.Build();
 
     // Configure the HTTP request pipeline.
-    if (app.Environment.IsDevelopment())
+    // Show Swagger in Development and Docker environments (Docker runs HTTP-only,
+    // no TLS cert available inside the container).
+    if (app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Docker"))
     {
         app.UseSwagger();
         app.UseSwaggerUI(c =>
@@ -92,7 +94,12 @@ try
         });
     }
 
-    app.UseHttpsRedirection();
+    // Skip HTTPS redirect inside Docker — the container speaks HTTP only.
+    // TLS termination belongs at the reverse proxy / load balancer layer.
+    if (!app.Environment.IsEnvironment("Docker"))
+    {
+        app.UseHttpsRedirection();
+    }
 
     // Request logging middleware — reads Serilog:RequestLogging config to determine
     // whether to log all requests, errors only, or skip entirely.
@@ -105,6 +112,16 @@ try
 
     // Health check endpoint
     app.MapGet("/health", () => new { status = "healthy", timestamp = DateTime.UtcNow });
+
+    // Auto-apply pending EF Core migrations on startup in Docker and Development.
+    // In Production: generate a SQL script with `dotnet ef migrations script --idempotent`
+    // and apply it directly on the server.
+    if (app.Environment.IsEnvironment("Docker") || app.Environment.IsDevelopment())
+    {
+        using var scope = app.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<MediaBackupDbContext>();
+        db.Database.Migrate();
+    }
 
     app.Run();
 }
@@ -128,6 +145,12 @@ static void ConfigureConfiguration(WebApplicationBuilder builder)
     builder.Configuration
         .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
         .AddJsonFile($"appsettings.{environmentName}.json", optional: true, reloadOnChange: true)
+        // Standard .NET env var convention: ConnectionStrings__DefaultConnection, Jwt__Secret, etc.
+        // __ maps to : so these override appsettings.json without requiring a prefix.
+        // This is how Docker / container environments typically inject config.
+        .AddEnvironmentVariables()
+        // Environment-prefixed vars (e.g. PixNest_Docker_Jwt__Secret) override the above.
+        // Useful for multi-environment host machines where you want to scope vars by env name.
         .AddEnvironmentVariables(prefix: BuildEnvironmentVariablePrefix(environmentName));
 }
 

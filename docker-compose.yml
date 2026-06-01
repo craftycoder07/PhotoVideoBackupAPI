@@ -1,0 +1,79 @@
+services:
+  # ── PostgreSQL ────────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: pixnest-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: PhotoVideoBackup
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"   # host 5433 avoids conflict with a locally-running Postgres on 5432
+    networks:
+      - pixnest-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d PhotoVideoBackup"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Seq (structured log UI) ───────────────────────────────────────────────────
+  seq:
+    image: datalust/seq:latest
+    container_name: pixnest-seq
+    restart: unless-stopped
+    environment:
+      ACCEPT_EULA: "Y"
+      # Required by Seq 2024+ on first run. Two options:
+      #   SEQ_FIRSTRUN_ADMINPASSWORD — sets an admin password (access Seq UI with this)
+      #   SEQ_FIRSTRUN_NOAUTHENTICATION — disables auth entirely (fine for local dev only)
+      SEQ_FIRSTRUN_ADMINPASSWORD: "${SEQ_ADMIN_PASSWORD}"
+    volumes:
+      - seq_data:/data
+    ports:
+      - "5341:80"     # Seq web UI + ingestion: http://localhost:5341 on the host
+    networks:
+      - pixnest-net
+
+  # ── API ───────────────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: pixnest-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy   # wait until Postgres passes its health check
+      seq:
+        condition: service_started
+    # Docker Compose substitutes ${VAR} values from the auto-loaded .env file.
+    # Variables use standard .NET naming: __ maps to : (e.g. ConnectionStrings__DefaultConnection
+    # → ConnectionStrings:DefaultConnection), picked up by AddEnvironmentVariables() in Program.cs.
+    environment:
+      ASPNETCORE_ENVIRONMENT: Docker
+      ASPNETCORE_URLS: "http://+:8080"   # HTTP only; TLS belongs at the reverse proxy
+      ConnectionStrings__DefaultConnection: "Host=postgres;Port=5432;Database=PhotoVideoBackup;Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
+      Jwt__Secret: "${JWT_SECRET}"
+    volumes:
+      - "${MEDIA_STORAGE_PATH}:/app/media"   # quoted to handle spaces in the Mac path
+      - dataprotection_keys:/app/.aspnet/DataProtection-Keys   # persist encryption keys across restarts
+    ports:
+      - "5100:8080"   # API at http://localhost:5100
+    networks:
+      - pixnest-net
+
+# ── Volumes ────────────────────────────────────────────────────────────────────
+volumes:
+  postgres_data:          # PostgreSQL data — survives container restarts
+  seq_data:               # Seq log data — survives container restarts
+  dataprotection_keys:    # ASP.NET Core Data Protection key ring — survives container restarts
+
+# ── Networks ───────────────────────────────────────────────────────────────────
+networks:
+  pixnest-net:
+    driver: bridge

@@ -1,0 +1,15 @@
+**/.git
+**/.idea
+**/.vs
+**/.vscode
+**/bin
+**/obj
+**/logs
+**/*.log
+**/*.user
+**/node_modules
+.env
+.env.*
+appsettings.Development.json
+README.md
+**/*.md
