@@ -4,14 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-PixNest is a self-hosted photo/video backup API — a private, local alternative to Google Photos. Mobile devices back up media to your server over WiFi. The project name in logs and env var prefixes is **PixNest**; the solution/assembly names still use `PhotoVideoBackupAPI`.
+PixNest is a self-hosted photo/video backup API — a private, local alternative to Google Photos. Mobile devices back up media to your server over WiFi. The project/assembly name is **PixNestAPI**.
 
 ## Solution Structure
 
 ```
-PhotoVideoBackupAPI.sln
+PixNestAPI.sln
 └── src/
-    ├── PhotoVideoBackupAPI.WebApi/       # ASP.NET Core 8 Web API (entry point)
+    ├── PixNestAPI.WebApi/       # ASP.NET Core 8 Web API (entry point)
     │   ├── Features/                     # Controllers grouped by domain
     │   │   ├── Auth/AuthController.cs
     │   │   ├── Media/MediaController.cs
@@ -22,7 +22,7 @@ PhotoVideoBackupAPI.sln
     │   ├── Services/                     # IMediaBackupService, IAuthService + impls
     │   ├── Data/MediaBackupDbContext.cs  # EF Core context (PostgreSQL)
     │   └── Migrations/                   # EF Core migration history
-    └── PhotoVideoBackupAPI.Infrastructure/
+    └── PixNestAPI.Infrastructure/
         └── Logging/SerilogConfiguration.cs  # Bootstrap + full Serilog setup
 ```
 
@@ -48,20 +48,20 @@ PhotoVideoBackupAPI.sln
 
 ```bash
 # Run locally (HTTPS, Swagger at https://localhost:7109)
-dotnet run --project src/PhotoVideoBackupAPI.WebApi --launch-profile https
+dotnet run --project src/PixNestAPI.WebApi --launch-profile https
 
 # Run in Development environment
-dotnet run --project src/PhotoVideoBackupAPI.WebApi --environment Development
+dotnet run --project src/PixNestAPI.WebApi --environment Development
 
 # Build
-dotnet build PhotoVideoBackupAPI.sln
+dotnet build PixNestAPI.sln
 
 # EF Core migrations (run from repo root)
-dotnet ef migrations add <MigrationName> --project src/PhotoVideoBackupAPI.WebApi
-dotnet ef database update --project src/PhotoVideoBackupAPI.WebApi
+dotnet ef migrations add <MigrationName> --project src/PixNestAPI.WebApi
+dotnet ef database update --project src/PixNestAPI.WebApi
 
 # Generate idempotent SQL script for production deployments
-dotnet ef migrations script --idempotent --project src/PhotoVideoBackupAPI.WebApi
+dotnet ef migrations script --idempotent --project src/PixNestAPI.WebApi
 
 # Docker Compose (requires .env file at repo root)
 docker compose up --build

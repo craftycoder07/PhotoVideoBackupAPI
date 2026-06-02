@@ -5,7 +5,7 @@ services:
     container_name: pixnest-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: PhotoVideoBackup
+      POSTGRES_DB: PixNest
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
@@ -15,7 +15,7 @@ services:
     networks:
       - pixnest-net
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d PhotoVideoBackup"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d PixNest"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -57,7 +57,7 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: "http://+:8080"   # HTTP only; TLS belongs at the reverse proxy
-      ConnectionStrings__DefaultConnection: "Host=postgres;Port=5432;Database=PhotoVideoBackup;Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
+      ConnectionStrings__DefaultConnection: "Host=postgres;Port=5432;Database=PixNest;Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
       Jwt__Secret: "${JWT_SECRET}"
     volumes:
       - "${MEDIA_STORAGE_PATH}:/app/media"   # quoted to handle spaces in the Mac path
