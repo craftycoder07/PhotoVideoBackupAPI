@@ -11,7 +11,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5433:5432"   # host 5433 avoids conflict with a locally-running Postgres on 5432
+      - "5432:5432"
     networks:
       - pixnest-net
     healthcheck:
@@ -34,7 +34,7 @@ services:
     volumes:
       - seq_data:/data
     ports:
-      - "5341:80"     # Seq web UI + ingestion: http://localhost:5341 on the host
+      - "80:80"     # Seq web UI + ingestion: http://localhost:80 on the host
     networks:
       - pixnest-net
 
