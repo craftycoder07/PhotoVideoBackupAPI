@@ -8,6 +8,8 @@ FROM mcr.microsoft.com/dotnet/sdk:8.0 AS restore
 WORKDIR /src
 
 COPY PixNestAPI.sln ./
+COPY src/PixNestAPI.Domain/PixNestAPI.Domain.csproj \
+     src/PixNestAPI.Domain/
 COPY src/PixNestAPI.WebApi/PixNestAPI.WebApi.csproj \
      src/PixNestAPI.WebApi/
 COPY src/PixNestAPI.Infrastructure/PixNestAPI.Infrastructure.csproj \
