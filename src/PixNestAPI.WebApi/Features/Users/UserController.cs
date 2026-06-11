@@ -1,77 +1,38 @@
-using Microsoft.AspNetCore.Mvc;
+using MediatR;
 using Microsoft.AspNetCore.Authorization;
-using System.Security.Claims;
-using PixNestAPI.WebApi.Models;
-using PixNestAPI.WebApi.Services;
+using Microsoft.AspNetCore.Mvc;
+using PixNestAPI.Application.Features.Users.Dtos;
+using PixNestAPI.Application.Features.Users.GetUser;
+using PixNestAPI.Application.Features.Users.UpdateSettings;
+using PixNestAPI.Domain.ValueObjects;
 
-namespace PixNestAPI.WebApi.Features.Users
+namespace PixNestAPI.WebApi.Features.Users;
+
+[ApiController]
+[Route("api/user")]
+[Authorize]
+public class UserController : ControllerBase
 {
-    [ApiController]
-    [Route("api/user")]
-    [Authorize]
-    public class UserController : ControllerBase
+    private readonly IMediator _mediator;
+
+    public UserController(IMediator mediator) => _mediator = mediator;
+
+    private string GetCurrentUserId()
+        => User.FindFirst("userId")?.Value ?? throw new UnauthorizedAccessException("User ID not found in token");
+
+    [HttpGet]
+    public async Task<ActionResult<UserDto>> GetCurrentUser(CancellationToken ct)
     {
-        private readonly IMediaBackupService _mediaBackupService;
-        private readonly ILogger<UserController> _logger;
+        var userId = GetCurrentUserId();
+        var user = await _mediator.Send(new GetUserQuery(userId), ct);
+        return Ok(user);
+    }
 
-        public UserController(IMediaBackupService mediaBackupService, ILogger<UserController> logger)
-        {
-            _mediaBackupService = mediaBackupService;
-            _logger = logger;
-        }
-
-        private string GetCurrentUserId()
-        {
-            return User.FindFirst("userId")?.Value ?? throw new UnauthorizedAccessException("User ID not found in token");
-        }
-
-        /// <summary>
-        /// Get current user information
-        /// </summary>
-        [HttpGet]
-        public async Task<ActionResult<User>> GetCurrentUser()
-        {
-            try
-            {
-                var userId = GetCurrentUserId();
-                var user = await _mediaBackupService.GetUserAsync(userId);
-                if (user == null)
-                {
-                    return NotFound(new { error = "User not found" });
-                }
-                
-                return Ok(user);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting current user");
-                return StatusCode(500, new { error = "Failed to get user", details = ex.Message });
-            }
-        }
-
-        /// <summary>
-        /// Update user settings
-        /// </summary>
-        [HttpPut("settings")]
-        public async Task<ActionResult<User>> UpdateUserSettings([FromBody] DeviceSettings settings)
-        {
-            try
-            {
-                var userId = GetCurrentUserId();
-                var updatedUser = await _mediaBackupService.UpdateUserSettingsAsync(userId, settings);
-                return Ok(updatedUser);
-            }
-            catch (ArgumentException ex)
-            {
-                return NotFound(new { error = ex.Message });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error updating user settings");
-                return StatusCode(500, new { error = "Failed to update user settings", details = ex.Message });
-            }
-        }
+    [HttpPut("settings")]
+    public async Task<ActionResult<UserDto>> UpdateUserSettings([FromBody] DeviceSettings settings, CancellationToken ct)
+    {
+        var userId = GetCurrentUserId();
+        var user = await _mediator.Send(new UpdateSettingsCommand(userId, settings), ct);
+        return Ok(user);
     }
 }
-
-

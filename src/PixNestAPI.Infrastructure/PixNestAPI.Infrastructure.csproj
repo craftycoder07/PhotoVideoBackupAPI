@@ -22,6 +22,9 @@
     <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
     <PackageReference Include="Serilog.Sinks.Seq" Version="8.0.0" />
     <PackageReference Include="SkiaSharp" Version="3.119.1" />
+    <!-- Native libSkiaSharp.so for Linux containers. NoDependencies variant is self-contained
+         (no fontconfig needed) and sufficient for image decode/resize/encode. -->
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="3.119.1" />
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.19.1" />
   </ItemGroup>
 

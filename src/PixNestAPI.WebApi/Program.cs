@@ -1,10 +1,11 @@
-using PixNestAPI.WebApi.Services;
-using PixNestAPI.WebApi.Data;
+using PixNestAPI.Application;
+using PixNestAPI.Infrastructure;
 using PixNestAPI.Infrastructure.Logging;
-using Microsoft.EntityFrameworkCore;
+using PixNestAPI.Infrastructure.Persistence;
+using PixNestAPI.WebApi.Middleware;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-using Microsoft.Extensions.Configuration;
 using Serilog;
 using System.Text;
 
@@ -25,27 +26,22 @@ try
     // IConfiguration is built and the Serilog section in appsettings.json is readable.
     builder.Host.AddSerilogLogging();
 
-    // Add services to the container.
     builder.Services.AddControllers();
     builder.Services.AddEndpointsApiExplorer();
     builder.Services.AddSwaggerGen(c =>
     {
-        c.SwaggerDoc("v1", new() { Title = "Mobile Media Backup API", Version = "v1" });
+        c.SwaggerDoc("v1", new() { Title = "PixNest API", Version = "v1" });
         c.TagActionsBy(api => new[] { api.GroupName ?? api.ActionDescriptor.RouteValues["controller"] });
         c.DocInclusionPredicate((name, api) => true);
     });
 
-    // Add Entity Framework
-    builder.Services.AddDbContext<MediaBackupDbContext>(options =>
-        options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+    builder.Services.AddApplication();
+    builder.Services.AddInfrastructure(builder.Configuration);
 
-    // Register services
-    builder.Services.AddScoped<IMediaBackupService, MediaBackupService>();
-    builder.Services.AddScoped<IAuthService, JwtAuthService>();
+    builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+    builder.Services.AddProblemDetails();
 
     // Configure JWT Authentication
-    // Environment variables override appsettings.json automatically
-    // Use Jwt__Secret or Jwt:Secret environment variable
     var jwtSecret = builder.Configuration["Jwt:Secret"]
         ?? (builder.Environment.IsDevelopment()
             ? "development-key-change-in-production"
@@ -68,7 +64,6 @@ try
 
     builder.Services.AddAuthorization();
 
-    // Add CORS
     builder.Services.AddCors(options =>
     {
         options.AddPolicy("AllowAll", policy =>
@@ -81,25 +76,24 @@ try
 
     var app = builder.Build();
 
-    // Configure the HTTP request pipeline.
-    // Show Swagger in Development and Docker environments (Docker runs HTTP-only,
-    // no TLS cert available inside the container).
+    // Show Swagger in Development (Docker runs HTTP-only; no TLS cert inside container).
     if (app.Environment.IsDevelopment())
     {
         app.UseSwagger();
         app.UseSwaggerUI(c =>
         {
-            c.SwaggerEndpoint("/swagger/v1/swagger.json", "Mobile Media Backup API v1");
-            c.RoutePrefix = string.Empty; // Serve Swagger UI at root
+            c.SwaggerEndpoint("/swagger/v1/swagger.json", "PixNest API v1");
+            c.RoutePrefix = string.Empty;
         });
     }
 
-    // Skip HTTPS redirect inside Docker — the container speaks HTTP only.
-    // TLS termination belongs at the reverse proxy / load balancer layer.
+    // Skip HTTPS redirect inside Docker — TLS terminates at the reverse proxy.
     if (!app.Environment.IsDevelopment())
     {
         app.UseHttpsRedirection();
     }
+
+    app.UseExceptionHandler();
 
     // Request logging middleware — reads Serilog:RequestLogging config to determine
     // whether to log all requests, errors only, or skip entirely.
@@ -110,16 +104,15 @@ try
     app.UseAuthorization();
     app.MapControllers();
 
-    // Health check endpoint
     app.MapGet("/health", () => new { status = "healthy", timestamp = DateTime.UtcNow });
 
-    // Auto-apply pending EF Core migrations on startup in Docker and Development.
+    // Auto-apply pending EF Core migrations on startup in Development.
     // In Production: generate a SQL script with `dotnet ef migrations script --idempotent`
     // and apply it directly on the server.
     if (app.Environment.IsDevelopment())
     {
         using var scope = app.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<MediaBackupDbContext>();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         db.Database.Migrate();
     }
 
@@ -145,35 +138,20 @@ static void ConfigureConfiguration(WebApplicationBuilder builder)
     builder.Configuration
         .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
         .AddJsonFile($"appsettings.{environmentName}.json", optional: true, reloadOnChange: true)
-        // Standard .NET env var convention: ConnectionStrings__DefaultConnection, Jwt__Secret, etc.
-        // __ maps to : so these override appsettings.json without requiring a prefix.
-        // This is how Docker / container environments typically inject config.
         .AddEnvironmentVariables()
-        // Environment-prefixed vars (e.g. PixNest_Docker_Jwt__Secret) override the above.
-        // Useful for multi-environment host machines where you want to scope vars by env name.
         .AddEnvironmentVariables(prefix: BuildEnvironmentVariablePrefix(environmentName));
 }
 
 static string BuildEnvironmentVariablePrefix(string environmentName)
 {
     if (string.IsNullOrWhiteSpace(environmentName))
-    {
         return "PixNest_";
-    }
 
-    var normalized = environmentName.Trim();
-
-    switch (normalized.ToLowerInvariant())
+    return environmentName.Trim().ToLowerInvariant() switch
     {
-        case "production":
-        case "prod":
-            return "PixNest_Prod_";
-        case "staging":
-            return "PixNest_Staging_";
-        case "development":
-        case "dev":
-            return "PixNest_Dev_";
-        default:
-            return $"PixNest_{normalized}_";
-    }
+        "production" or "prod" => "PixNest_Prod_",
+        "staging" => "PixNest_Staging_",
+        "development" or "dev" => "PixNest_Dev_",
+        var other => $"PixNest_{other}_"
+    };
 }

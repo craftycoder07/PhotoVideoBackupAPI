@@ -1,208 +1,108 @@
+using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using PixNestAPI.WebApi.Models;
-using PixNestAPI.WebApi.Services;
+using PixNestAPI.Application.Features.Media.Delete;
+using PixNestAPI.Application.Features.Media.Dtos;
+using PixNestAPI.Application.Features.Media.GetItem;
+using PixNestAPI.Application.Features.Media.GetThumbnail;
+using PixNestAPI.Application.Features.Media.GetUserMedia;
+using PixNestAPI.Application.Features.Media.Search;
+using PixNestAPI.Application.Features.Media.Upload;
 
-namespace PixNestAPI.WebApi.Features.Media
+namespace PixNestAPI.WebApi.Features.Media;
+
+[ApiController]
+[Route("api/media")]
+public class MediaController : ControllerBase
 {
-    [ApiController]
-    [Route("api/media")]
-    public class MediaController : ControllerBase
+    private readonly IMediator _mediator;
+
+    public MediaController(IMediator mediator) => _mediator = mediator;
+
+    private string GetCurrentUserId()
+        => User.FindFirst("userId")?.Value ?? throw new UnauthorizedAccessException("User ID not found in token");
+
+    [HttpPost("upload/{sessionId}")]
+    public async Task<ActionResult<MediaItemDto>> UploadMedia(string sessionId, IFormFile file, CancellationToken ct)
     {
-        private readonly IMediaBackupService _mediaBackupService;
-        private readonly ILogger<MediaController> _logger;
+        if (file == null || file.Length == 0)
+            return BadRequest(new { error = "No file provided" });
 
-        public MediaController(IMediaBackupService mediaBackupService, ILogger<MediaController> logger)
-        {
-            _mediaBackupService = mediaBackupService;
-            _logger = logger;
-        }
-
-        /// <summary>
-        /// Upload media file to backup session
-        /// </summary>
-        [HttpPost("upload/{sessionId}")]
-        public async Task<ActionResult<MediaItem>> UploadMedia(string sessionId, IFormFile file)
-        {
-            try
-            {
-                if (file == null || file.Length == 0)
-                {
-                    return BadRequest(new { error = "No file provided" });
-                }
-
-                var mediaItem = await _mediaBackupService.UploadMediaAsync(sessionId, file);
-                _logger.LogInformation("Media uploaded: {FileName} to session {SessionId}", file.FileName, sessionId);
-                
-                return Ok(mediaItem);
-            }
-            catch (ArgumentException ex)
-            {
-                return NotFound(new { error = ex.Message });
-            }
-            catch (InvalidOperationException ex)
-            {
-                return BadRequest(new { error = ex.Message });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error uploading media to session {SessionId}", sessionId);
-                return StatusCode(500, new { error = "Failed to upload media", details = ex.Message });
-            }
-        }
-
-        /// <summary>
-        /// Get media item details
-        /// </summary>
-        [HttpGet("{mediaId}")]
-        public async Task<ActionResult<MediaItem>> GetMediaItem(string mediaId)
-        {
-            try
-            {
-                var mediaItem = await _mediaBackupService.GetMediaItemAsync(mediaId);
-                return Ok(mediaItem);
-            }
-            catch (ArgumentException ex)
-            {
-                return NotFound(new { error = ex.Message });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting media item {MediaId}", mediaId);
-                return StatusCode(500, new { error = "Failed to get media item", details = ex.Message });
-            }
-        }
-
-        /// <summary>
-        /// Get user media with pagination
-        /// </summary>
-        [HttpGet]
-        [Microsoft.AspNetCore.Authorization.Authorize]
-        public async Task<ActionResult<List<MediaItem>>> GetUserMedia([FromQuery] int page = 1, [FromQuery] int pageSize = 50)
-        {
-            try
-            {
-                var userId = User.FindFirst("userId")?.Value ?? throw new UnauthorizedAccessException("User ID not found in token");
-                var mediaItems = await _mediaBackupService.GetUserMediaAsync(userId, page, pageSize);
-                return Ok(mediaItems);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting media for user");
-                return StatusCode(500, new { error = "Failed to get user media", details = ex.Message });
-            }
-        }
-
-
-        /// <summary>
-        /// Delete media item
-        /// </summary>
-        [HttpDelete("{mediaId}")]
-        public async Task<ActionResult> DeleteMediaItem(string mediaId)
-        {
-            try
-            {
-                var deleted = await _mediaBackupService.DeleteMediaItemAsync(mediaId);
-                if (deleted)
-                {
-                    return Ok(new { message = "Media item deleted successfully" });
-                }
-                else
-                {
-                    return NotFound(new { error = "Media item not found" });
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error deleting media item {MediaId}", mediaId);
-                return StatusCode(500, new { error = "Failed to delete media item", details = ex.Message });
-            }
-        }
-
-        /// <summary>
-        /// Get media thumbnail
-        /// </summary>
-        [HttpGet("{mediaId}/thumbnail")]
-        public async Task<IActionResult> GetThumbnail(string mediaId)
-        {
-            try
-            {
-                var thumbnailData = await _mediaBackupService.GetThumbnailAsync(mediaId);
-                var mediaItem = await _mediaBackupService.GetMediaItemAsync(mediaId);
-                
-                return File(thumbnailData, GetContentType(mediaItem.FileExtension));
-            }
-            catch (ArgumentException ex)
-            {
-                return NotFound(new { error = ex.Message });
-            }
-            catch (FileNotFoundException ex)
-            {
-                return NotFound(new { error = ex.Message });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting thumbnail for media {MediaId}", mediaId);
-                return StatusCode(500, new { error = "Failed to get thumbnail", details = ex.Message });
-            }
-        }
-
-        /// <summary>
-        /// Search user media items
-        /// </summary>
-        [HttpGet("search")]
-        [Microsoft.AspNetCore.Authorization.Authorize]
-        public async Task<ActionResult<List<MediaItem>>> SearchUserMedia([FromQuery] string? query = null, [FromQuery] DateTime? fromDate = null, [FromQuery] DateTime? toDate = null)
-        {
-            try
-            {
-                var userId = User.FindFirst("userId")?.Value ?? throw new UnauthorizedAccessException("User ID not found in token");
-                var mediaItems = await _mediaBackupService.SearchUserMediaAsync(userId, query ?? "", fromDate, toDate);
-                return Ok(mediaItems);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error searching media for user");
-                return StatusCode(500, new { error = "Failed to search media", details = ex.Message });
-            }
-        }
-
-        /// <summary>
-        /// Get media by date range for user
-        /// </summary>
-        [HttpGet("date-range")]
-        [Microsoft.AspNetCore.Authorization.Authorize]
-        public async Task<ActionResult<List<MediaItem>>> GetMediaByDateRange([FromQuery] DateTime fromDate, [FromQuery] DateTime toDate)
-        {
-            try
-            {
-                var userId = User.FindFirst("userId")?.Value ?? throw new UnauthorizedAccessException("User ID not found in token");
-                var mediaItems = await _mediaBackupService.GetMediaByDateRangeAsync(userId, fromDate, toDate);
-                return Ok(mediaItems);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting media by date range for user");
-                return StatusCode(500, new { error = "Failed to get media by date range", details = ex.Message });
-            }
-        }
-
-        // Helper methods
-        private string GetContentType(string extension)
-        {
-            return extension.ToLowerInvariant() switch
-            {
-                ".jpg" or ".jpeg" => "image/jpeg",
-                ".png" => "image/png",
-                ".gif" => "image/gif",
-                ".bmp" => "image/bmp",
-                ".webp" => "image/webp",
-                ".heic" or ".heif" => "image/heic",
-                ".mp4" => "video/mp4",
-                ".mov" => "video/quicktime",
-                ".avi" => "video/x-msvideo",
-                ".mkv" => "video/x-matroska",
-                _ => "application/octet-stream"
-            };
-        }
+        await using var stream = file.OpenReadStream();
+        var result = await _mediator.Send(
+            new UploadMediaCommand(sessionId, stream, file.FileName, file.ContentType, file.Length, null), ct);
+        return Ok(result);
     }
+
+    [HttpGet("{mediaId}")]
+    public async Task<ActionResult<MediaItemDto>> GetMediaItem(string mediaId, CancellationToken ct)
+    {
+        var item = await _mediator.Send(new GetMediaItemQuery(mediaId), ct);
+        return Ok(item);
+    }
+
+    [HttpGet]
+    [Authorize]
+    public async Task<ActionResult<List<MediaItemDto>>> GetUserMedia([FromQuery] int page = 1, [FromQuery] int pageSize = 50, CancellationToken ct = default)
+    {
+        var userId = GetCurrentUserId();
+        var items = await _mediator.Send(new GetUserMediaQuery(userId, page, pageSize), ct);
+        return Ok(items);
+    }
+
+    [HttpDelete("{mediaId}")]
+    public async Task<ActionResult> DeleteMediaItem(string mediaId, CancellationToken ct)
+    {
+        var deleted = await _mediator.Send(new DeleteMediaCommand(mediaId), ct);
+        return deleted ? NoContent() : NotFound(new { error = "Media item not found" });
+    }
+
+    [HttpGet("{mediaId}/thumbnail")]
+    public async Task<IActionResult> GetThumbnail(string mediaId, CancellationToken ct)
+    {
+        var item = await _mediator.Send(new GetMediaItemQuery(mediaId), ct);
+        var bytes = await _mediator.Send(new GetThumbnailQuery(mediaId), ct);
+        return File(bytes, GetContentType(item.FileExtension));
+    }
+
+    [HttpGet("search")]
+    [Authorize]
+    public async Task<ActionResult<List<MediaItemDto>>> SearchUserMedia(
+        [FromQuery] string? query = null,
+        [FromQuery] DateTime? fromDate = null,
+        [FromQuery] DateTime? toDate = null,
+        CancellationToken ct = default)
+    {
+        var userId = GetCurrentUserId();
+        var items = await _mediator.Send(new SearchMediaQuery(userId, query ?? "", fromDate, toDate), ct);
+        return Ok(items);
+    }
+
+    [HttpGet("date-range")]
+    [Authorize]
+    public async Task<ActionResult<List<MediaItemDto>>> GetMediaByDateRange(
+        [FromQuery] DateTime fromDate,
+        [FromQuery] DateTime toDate,
+        CancellationToken ct = default)
+    {
+        var userId = GetCurrentUserId();
+        // SearchAsync with empty query falls through to pure date filtering
+        var items = await _mediator.Send(new SearchMediaQuery(userId, "", fromDate, toDate), ct);
+        return Ok(items);
+    }
+
+    private static string GetContentType(string extension) => extension.ToLowerInvariant() switch
+    {
+        ".jpg" or ".jpeg" => "image/jpeg",
+        ".png" => "image/png",
+        ".gif" => "image/gif",
+        ".bmp" => "image/bmp",
+        ".webp" => "image/webp",
+        ".heic" or ".heif" => "image/heic",
+        ".mp4" => "video/mp4",
+        ".mov" => "video/quicktime",
+        ".avi" => "video/x-msvideo",
+        ".mkv" => "video/x-matroska",
+        _ => "application/octet-stream"
+    };
 }

@@ -1,122 +1,73 @@
-using Microsoft.AspNetCore.Mvc;
+using MediatR;
 using Microsoft.AspNetCore.Authorization;
-using System.Security.Claims;
-using PixNestAPI.WebApi.Models;
-using PixNestAPI.WebApi.Services;
+using Microsoft.AspNetCore.Mvc;
+using PixNestAPI.Application.Features.Sessions.Dtos;
+using PixNestAPI.Application.Features.Sessions.Get;
+using PixNestAPI.Application.Features.Sessions.GetUserSessions;
+using PixNestAPI.Application.Features.Sessions.Start;
+using PixNestAPI.Application.Features.Sessions.Update;
+using PixNestAPI.Domain.Enums;
+using PixNestAPI.Domain.ValueObjects;
 
-namespace PixNestAPI.WebApi.Features.Sessions
+namespace PixNestAPI.WebApi.Features.Sessions;
+
+[ApiController]
+[Route("api/session")]
+[Authorize]
+public class SessionController : ControllerBase
 {
-    [ApiController]
-    [Route("api/session")]
-    [Authorize]
-    public class SessionController : ControllerBase
+    private readonly IMediator _mediator;
+
+    public SessionController(IMediator mediator) => _mediator = mediator;
+
+    private string GetCurrentUserId()
+        => User.FindFirst("userId")?.Value ?? throw new UnauthorizedAccessException("User ID not found in token");
+
+    [HttpPost("start")]
+    public async Task<ActionResult<BackupSessionDto>> StartBackupSession([FromBody] StartSessionRequest request, CancellationToken ct)
     {
-        private readonly IMediaBackupService _mediaBackupService;
-        private readonly ILogger<SessionController> _logger;
-
-        public SessionController(IMediaBackupService mediaBackupService, ILogger<SessionController> logger)
-        {
-            _mediaBackupService = mediaBackupService;
-            _logger = logger;
-        }
-
-        private string GetCurrentUserId()
-        {
-            return User.FindFirst("userId")?.Value ?? throw new UnauthorizedAccessException("User ID not found in token");
-        }
-
-        /// <summary>
-        /// Start a new backup session
-        /// </summary>
-        [HttpPost("start")]
-        public async Task<ActionResult<BackupSession>> StartBackupSession([FromBody] StartSessionRequest request)
-        {
-            try
-            {
-                var userId = GetCurrentUserId();
-                var session = await _mediaBackupService.StartBackupSessionAsync(userId, request.SessionInfo);
-                _logger.LogInformation("Backup session started: {SessionId} by user {UserId}", session.Id, userId);
-                
-                return Ok(session);
-            }
-            catch (ArgumentException ex)
-            {
-                return NotFound(new { error = ex.Message });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error starting backup session");
-                return StatusCode(500, new { error = "Failed to start backup session", details = ex.Message });
-            }
-        }
-
-        /// <summary>
-        /// Get backup session details
-        /// </summary>
-        [HttpGet("{sessionId}")]
-        public async Task<ActionResult<BackupSession>> GetBackupSession(string sessionId)
-        {
-            try
-            {
-                var session = await _mediaBackupService.GetBackupSessionAsync(sessionId);
-                return Ok(session);
-            }
-            catch (ArgumentException ex)
-            {
-                return NotFound(new { error = ex.Message });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting backup session {SessionId}", sessionId);
-                return StatusCode(500, new { error = "Failed to get backup session", details = ex.Message });
-            }
-        }
-
-        /// <summary>
-        /// Update backup session progress
-        /// </summary>
-        [HttpPut("{sessionId}")]
-        public async Task<ActionResult<BackupSession>> UpdateBackupSession(string sessionId, [FromBody] BackupSessionUpdateRequest request)
-        {
-            try
-            {
-                var session = await _mediaBackupService.UpdateBackupSessionAsync(sessionId, request);
-                return Ok(session);
-            }
-            catch (ArgumentException ex)
-            {
-                return NotFound(new { error = ex.Message });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error updating backup session {SessionId}", sessionId);
-                return StatusCode(500, new { error = "Failed to update backup session", details = ex.Message });
-            }
-        }
-
-        /// <summary>
-        /// Get all backup sessions for the current user
-        /// </summary>
-        [HttpGet]
-        public async Task<ActionResult<List<BackupSession>>> GetUserBackupSessions()
-        {
-            try
-            {
-                var userId = GetCurrentUserId();
-                var sessions = await _mediaBackupService.GetUserBackupSessionsAsync(userId);
-                return Ok(sessions);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting backup sessions for user");
-                return StatusCode(500, new { error = "Failed to get backup sessions", details = ex.Message });
-            }
-        }
-
+        var userId = GetCurrentUserId();
+        var session = await _mediator.Send(new StartSessionCommand(userId, request.SessionInfo), ct);
+        return Ok(session);
     }
 
-    public class StartSessionRequest
+    [HttpGet("{sessionId}")]
+    public async Task<ActionResult<BackupSessionDto>> GetBackupSession(string sessionId, CancellationToken ct)
     {
-        public BackupSessionInfo SessionInfo { get; set; } = new();
+        var session = await _mediator.Send(new GetSessionQuery(sessionId), ct);
+        return Ok(session);
+    }
+
+    [HttpPut("{sessionId}")]
+    public async Task<ActionResult<BackupSessionDto>> UpdateBackupSession(string sessionId, [FromBody] UpdateSessionRequest request, CancellationToken ct)
+    {
+        var session = await _mediator.Send(new UpdateSessionCommand(
+            sessionId,
+            request.ProcessedItems,
+            request.SuccessfulBackups,
+            request.FailedBackups,
+            request.SkippedItems,
+            request.TotalSize,
+            request.Status,
+            request.ErrorMessage), ct);
+        return Ok(session);
+    }
+
+    [HttpGet]
+    public async Task<ActionResult<List<BackupSessionDto>>> GetUserBackupSessions(CancellationToken ct)
+    {
+        var userId = GetCurrentUserId();
+        var sessions = await _mediator.Send(new GetUserSessionsQuery(userId), ct);
+        return Ok(sessions);
     }
 }
+
+public record StartSessionRequest(BackupSessionInfo SessionInfo);
+public record UpdateSessionRequest(
+    int? ProcessedItems,
+    int? SuccessfulBackups,
+    int? FailedBackups,
+    int? SkippedItems,
+    long? TotalSize,
+    SessionStatus? Status,
+    string? ErrorMessage);

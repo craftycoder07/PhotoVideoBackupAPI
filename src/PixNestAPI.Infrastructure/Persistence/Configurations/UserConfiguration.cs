@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using PixNestAPI.Domain.Entities;
 using PixNestAPI.Domain.ValueObjects;
@@ -20,12 +21,14 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(e => e.Settings)
             .HasConversion(
                 v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
-                v => JsonSerializer.Deserialize<DeviceSettings>(v, (JsonSerializerOptions?)null) ?? new DeviceSettings());
+                v => JsonSerializer.Deserialize<DeviceSettings>(v, (JsonSerializerOptions?)null) ?? new DeviceSettings())
+            .Metadata.SetValueComparer(JsonValueComparer<DeviceSettings>());
 
         builder.Property(e => e.Stats)
             .HasConversion(
                 v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
-                v => JsonSerializer.Deserialize<BackupStats>(v, (JsonSerializerOptions?)null) ?? new BackupStats());
+                v => JsonSerializer.Deserialize<BackupStats>(v, (JsonSerializerOptions?)null) ?? new BackupStats())
+            .Metadata.SetValueComparer(JsonValueComparer<BackupStats>());
 
         builder.HasMany(e => e.BackupSessions)
             .WithOne(s => s.User)
@@ -36,4 +39,13 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
         builder.HasIndex(e => e.Email).IsUnique();
         builder.HasIndex(e => e.ApiKey).IsUnique();
     }
+
+    // JSON-backed reference types need a ValueComparer, otherwise EF Core uses
+    // reference equality and never detects in-place mutations (e.g. user.Stats.TotalPhotos++),
+    // so those changes are silently never persisted.
+    private static ValueComparer<T> JsonValueComparer<T>() => new(
+        (a, b) => JsonSerializer.Serialize(a, (JsonSerializerOptions?)null)
+                  == JsonSerializer.Serialize(b, (JsonSerializerOptions?)null),
+        v => v == null ? 0 : JsonSerializer.Serialize(v, (JsonSerializerOptions?)null).GetHashCode(),
+        v => JsonSerializer.Deserialize<T>(JsonSerializer.Serialize(v, (JsonSerializerOptions?)null), (JsonSerializerOptions?)null)!);
 }
