@@ -10,6 +10,8 @@ WORKDIR /src
 COPY PixNestAPI.sln ./
 COPY src/PixNestAPI.Domain/PixNestAPI.Domain.csproj \
      src/PixNestAPI.Domain/
+COPY src/PixNestAPI.Application/PixNestAPI.Application.csproj \
+     src/PixNestAPI.Application/
 COPY src/PixNestAPI.WebApi/PixNestAPI.WebApi.csproj \
      src/PixNestAPI.WebApi/
 COPY src/PixNestAPI.Infrastructure/PixNestAPI.Infrastructure.csproj \
