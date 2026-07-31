@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Serilog;
 using Serilog.Events;
@@ -26,13 +28,16 @@ public static class SerilogConfiguration
     /// Full Serilog configuration via IConfiguration (reads appsettings Serilog section).
     /// Call AFTER ConfigureConfiguration() so the Serilog section is visible.
     /// </summary>
-    public static IHostBuilder AddSerilogLogging(this IHostBuilder hostBuilder)
+    public static IServiceCollection AddSerilogLogging(this IServiceCollection serviceCollection)
     {
-        return hostBuilder.UseSerilog((context, services, configuration) =>
+        return serviceCollection.AddSerilog((servicesProvider, loggerConfiguration) =>
         {
-            configuration
-                .ReadFrom.Configuration(context.Configuration)
-                .ReadFrom.Services(services)   // picks up any ILogEventEnricher registered in DI
+            IWebHostEnvironment env = servicesProvider.GetRequiredService<IWebHostEnvironment>();
+            IConfiguration configuration = servicesProvider.GetRequiredService<IConfiguration>();
+            
+            loggerConfiguration
+                .ReadFrom.Configuration(configuration)
+                .ReadFrom.Services(servicesProvider)   // picks up any ILogEventEnricher registered in DI
                 .Enrich.FromLogContext()
                 .Enrich.WithEnvironmentName()
                 .Enrich.WithMachineName()
@@ -41,12 +46,12 @@ public static class SerilogConfiguration
                 .Enrich.WithProperty("Application", "PixNestAPI");
 
             // Fallback if no Serilog section exists in config
-            if (!context.Configuration.GetSection("Serilog").Exists())
+            if (!configuration?.GetSection("Serilog").Exists() ?? true)
             {
-                if (context.HostingEnvironment.IsDevelopment())
-                    configuration.WriteTo.Console();
+                if (env?.IsDevelopment() ?? false)
+                    loggerConfiguration.WriteTo.Console();
                 else
-                    configuration.WriteTo.Console(new CompactJsonFormatter());
+                    loggerConfiguration.WriteTo.Console(new CompactJsonFormatter());
             }
         });
     }

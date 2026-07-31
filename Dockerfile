@@ -17,7 +17,10 @@ COPY src/PixNestAPI.WebApi/PixNestAPI.WebApi.csproj \
 COPY src/PixNestAPI.Infrastructure/PixNestAPI.Infrastructure.csproj \
      src/PixNestAPI.Infrastructure/
 
-RUN dotnet restore
+# Restore only the WebApi project (and its transitive project refs), not the whole
+# solution — the solution includes the test project, which is intentionally not
+# copied into the production image.
+RUN dotnet restore src/PixNestAPI.WebApi/PixNestAPI.WebApi.csproj
 
 # Stage 2: Build
 FROM restore AS build

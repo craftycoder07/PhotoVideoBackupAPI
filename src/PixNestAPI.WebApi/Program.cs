@@ -24,7 +24,7 @@ try
 
     // Stage 2: Replace bootstrap logger with full Serilog logger now that
     // IConfiguration is built and the Serilog section in appsettings.json is readable.
-    builder.Host.AddSerilogLogging();
+    builder.Services.AddSerilogLogging();
 
     builder.Services.AddControllers();
     builder.Services.AddEndpointsApiExplorer();
