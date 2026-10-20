@@ -43,8 +43,12 @@ WORKDIR /app
 # Run as non-root for security
 RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
 
-# Create log and media directories with correct ownership
-RUN mkdir -p /app/logs /app/media && \
+# Create log, media and Data Protection directories with correct ownership.
+# The Data Protection path MUST exist in the image: docker-compose mounts a named volume
+# there, and Docker creates a missing mount point as root:root — which appuser (uid 100)
+# cannot write, so the key ring fails on every start with UnauthorizedAccessException.
+# Creating it here means Docker initialises the fresh volume with appuser ownership.
+RUN mkdir -p /app/logs /app/media /app/.aspnet/DataProtection-Keys && \
     chown -R appuser:appgroup /app
 
 COPY --from=publish --chown=appuser:appgroup /app/publish .

@@ -1,0 +1,45 @@
+# PixNest — development overlay.
+#
+#   docker compose up -d --build
+#
+# Compose merges this file into docker-compose.yml automatically whenever no -f is given,
+# so the shortest command is the development one. It holds only what differs from the
+# production base: the "-dev" markers, the published ports, and the Development
+# environment. Everything else — images, build, volumes, healthcheck timings, restart
+# policy — is inherited.
+#
+# Production carries no marker, so every name here is the one that gains "dev".
+# This file is NOT deployed to the server; there, the bare command is production.
+name: pixnestapi-dev
+
+services:
+  postgres:
+    container_name: pixnest-dev-postgres
+    environment:
+      POSTGRES_DB: PixNestDev
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d PixNestDev"]
+    ports:
+      - "5432:5432"   # pgAdmin -> localhost:5432
+
+  seq:
+    container_name: pixnest-dev-seq
+    ports:
+      - "80:80"       # Seq UI -> http://localhost:80
+
+  api:
+    container_name: pixnest-dev-api
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__DefaultConnection: "Host=postgres;Port=5432;Database=PixNestDev;Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
+    ports:
+      - "5100:8080"   # API + Swagger -> http://localhost:5100
+    # !override replaces the base list rather than appending to it. Without it the dev
+    # API would still be attached to caddy-net, an external network that only exists on
+    # the server — development must not depend on it.
+    networks: !override
+      - pixnest-net
+
+networks:
+  # Drop the production-only external network entirely in development.
+  caddy-net: !reset null

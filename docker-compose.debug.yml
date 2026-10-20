@@ -1,0 +1,23 @@
+# Debug-only override for the production stack — publishes admin ports on LOOPBACK ONLY.
+#
+#   docker compose --env-file .env.prod -f docker-compose.yml -f docker-compose.debug.yml up -d
+#
+# Opt-in by design: docker-compose.yml publishes nothing, so Caddy is the only route
+# into the stack. This file exists so you can point pgAdmin or a browser at the running
+# production containers without exposing anything beyond 127.0.0.1.
+#
+# Compose APPENDS list entries from an override, so these ports are added to services
+# that otherwise publish none.
+#
+# On the home server, keep using 127.0.0.1 and reach it over an SSH tunnel from your Mac:
+#   ssh -L 5433:127.0.0.1:5433 you@your-name.duckdns.org
+#   then point pgAdmin at localhost:5433
+# Never bind these to 0.0.0.0 on a publicly reachable host.
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:5433:5432"   # pgAdmin -> localhost:5433 (5432 is dev's)
+
+  seq:
+    ports:
+      - "127.0.0.1:5342:80"     # Seq UI -> http://localhost:5342 (dev uses 80, Caddy owns 80 on the server)

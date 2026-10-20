@@ -1,3 +1,24 @@
+# PixNest — the production stack, and the base every environment builds on.
+#
+#   docker compose -f docker-compose.yml up -d --build     # production, explicitly
+#   docker compose up -d                                   # development (see below)
+#
+# Production carries no marker anywhere: this file, the project name, the container
+# names, the database and the media folder are all the plain "PixNest" spelling.
+# Development is the variant, and lives in docker-compose.override.yml, which Compose
+# merges automatically when no -f is given. On the server that override file is simply
+# not deployed, so the bare `docker compose up -d` there IS production.
+#
+# Secrets come from an env file that is never committed. Compose auto-loads `.env`, which
+# holds whatever that machine runs — development values on a dev laptop, production
+# values on the server. To exercise production locally on a dev machine, pass the
+# production values explicitly:
+#   docker compose --env-file .env.prod -f docker-compose.yml up -d
+#
+# JWT_SECRET must be a real random value of at least 32 characters — the API refuses to
+# start otherwise. MEDIA_STORAGE_PATH must point at that machine's media disk.
+name: pixnestapi
+
 services:
   # ── PostgreSQL ────────────────────────────────────────────────────────────────
   postgres:
@@ -10,8 +31,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
+    # No published ports — only the API needs Postgres, and it reaches it over
+    # pixnest-net. Never expose 5432 on a publicly reachable host.
     networks:
       - pixnest-net
     healthcheck:
@@ -27,14 +48,13 @@ services:
     restart: unless-stopped
     environment:
       ACCEPT_EULA: "Y"
-      # Required by Seq 2024+ on first run. Two options:
-      #   SEQ_FIRSTRUN_ADMINPASSWORD — sets an admin password (access Seq UI with this)
-      #   SEQ_FIRSTRUN_NOAUTHENTICATION — disables auth entirely (fine for local dev only)
       SEQ_FIRSTRUN_ADMINPASSWORD: "${SEQ_ADMIN_PASSWORD}"
     volumes:
       - seq_data:/data
-    ports:
-      - "80:80"     # Seq web UI + ingestion: http://localhost:80 on the host
+    # No published ports. The development override binds host port 80, which would
+    # collide with Caddy here. Reach the Seq UI through a Caddy route or an SSH tunnel:
+    #   ssh -L 5341:localhost:80 user@server   (after temporarily publishing it), or
+    #   add a `logs.your-name.duckdns.org { reverse_proxy seq:80 }` site to the Caddyfile.
     networks:
       - pixnest-net
 
@@ -51,29 +71,47 @@ services:
         condition: service_healthy   # wait until Postgres passes its health check
       seq:
         condition: service_started
-    # Docker Compose substitutes ${VAR} values from the auto-loaded .env file.
-    # Variables use standard .NET naming: __ maps to : (e.g. ConnectionStrings__DefaultConnection
-    # → ConnectionStrings:DefaultConnection), picked up by AddEnvironmentVariables() in Program.cs.
     environment:
-      ASPNETCORE_ENVIRONMENT: Development
-      ASPNETCORE_URLS: "http://+:8080"   # HTTP only; TLS belongs at the reverse proxy
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: "http://+:8080"   # HTTP only; TLS terminates at Caddy
       ConnectionStrings__DefaultConnection: "Host=postgres;Port=5432;Database=PixNest;Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
       Jwt__Secret: "${JWT_SECRET}"
     volumes:
-      - "${MEDIA_STORAGE_PATH}:/app/media"   # quoted to handle spaces in the Mac path
+      - "${MEDIA_STORAGE_PATH}:/app/media"
       - dataprotection_keys:/app/.aspnet/DataProtection-Keys   # persist encryption keys across restarts
-    ports:
-      - "5100:8080"   # API at http://localhost:5100
+      - logs:/app/logs   # rolling Serilog files survive container recreation, not just restarts
+    # No published ports on purpose. Caddy reaches the API as http://api:8080 over
+    # caddy-net, and being unreachable any other way is what makes clearing
+    # KnownProxies/KnownNetworks in Program.cs safe — otherwise anything on the LAN
+    # could spoof X-Forwarded-Proto and X-Forwarded-For.
+    #
+    # If Caddy runs on the HOST instead of in Docker, delete caddy-net below and
+    # publish loopback-only instead — still unreachable from the LAN:
+    #   ports:
+    #     - "127.0.0.1:5100:8080"
+    # Pick one of the two, never both.
     networks:
       - pixnest-net
+      - caddy-net
 
 # ── Volumes ────────────────────────────────────────────────────────────────────
 volumes:
   postgres_data:          # PostgreSQL data — survives container restarts
   seq_data:               # Seq log data — survives container restarts
   dataprotection_keys:    # ASP.NET Core Data Protection key ring — survives container restarts
+  logs:                   # Serilog rolling files — survives container recreation
 
 # ── Networks ───────────────────────────────────────────────────────────────────
 networks:
   pixnest-net:
     driver: bridge
+  # The network Caddy already runs on. Create it once with:
+  #   docker network create caddy-net
+  # and attach the Caddy container to it. Then the Caddyfile site block is simply:
+  #   your-name.duckdns.org {
+  #       reverse_proxy api:8080
+  #   }
+  # Caddy sets X-Forwarded-For / -Proto / -Host by default and issues the
+  # http -> https redirect itself, so the API never needs UseHttpsRedirection.
+  caddy-net:
+    external: true

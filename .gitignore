@@ -392,6 +392,8 @@ Folder.DotSettings.user
 
 # Environment and secrets
 .env
+.env.*
+!.env.example
 .env.local
 .env.docker
 secrets.json

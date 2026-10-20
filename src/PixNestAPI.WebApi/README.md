@@ -64,7 +64,7 @@ Set the required environment variables:
 
 ```bash
 # Database connection
-export ConnectionStrings__DefaultConnection="Host=localhost;Database=PixNest;Username=your_user;Password=your_password;Port=5432"
+export ConnectionStrings__DefaultConnection="Host=localhost;Database=PixNestDev;Username=your_user;Password=your_password;Port=5432"
 
 # JWT Secret (required in production)
 export Jwt__Secret="your-super-secret-key-at-least-32-characters-long"

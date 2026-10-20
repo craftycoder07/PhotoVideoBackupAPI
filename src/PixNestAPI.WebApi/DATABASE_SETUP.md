@@ -81,8 +81,13 @@ Host=localhost;Database=PixNest;Username=******;Password=******;Port=5432
 
 **Development:**
 ```
-Host=localhost;Database=PixNest_Dev;Username=******;Password=******;Port=5432
+Host=localhost;Database=PixNestDev;Username=******;Password=******;Port=5432
 ```
+
+Under Docker these are supplied by Compose, not by these files: production uses the
+`PixNest` database in the `pixnestapi` project, development uses `PixNestDev` in the
+separate `pixnestapi-dev` project. Production carries no marker anywhere; development is
+the variant that gains one. See CLAUDE.md for the full split.
 
 ## File Storage
 
