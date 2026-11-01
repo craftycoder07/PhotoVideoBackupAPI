@@ -53,9 +53,10 @@ PixNestAPI.sln
 | Database | `PixNest` | `PixNestDev` |
 | Media folder | `PixNest Media Backup` | `PixNest Media Backup Dev` |
 | Log files | `pixnest-.log` | `pixnest-dev-.log` |
-| Host ports | none | 5100 api, 5432 pg, 80 seq |
+| Host ports | 443 caddy (TCP+UDP) | 5100 api, 5432 pg, 80 seq |
+| Compose profiles | `edge` (Caddy + DuckDNS) | none |
 
-Compose merges `docker-compose.override.yml` automatically when no `-f` is given, so the shortest command is the development one. The override holds only the differences and inherits everything else; it also uses `!override` / `!reset` to drop the production-only external `caddy-net`. **It is not deployed to the server** — there the bare `docker compose up -d` is production.
+Compose merges `docker-compose.override.yml` automatically when no `-f` is given, so the shortest command is the development one. The override holds only the differences and inherits everything else. **It is not deployed to the server** — there the bare `docker compose up -d` is production.
 
 **Env files**: `.env` holds whatever that machine runs — development values on a dev laptop, production values on the server — so it never carries a marker either. Compose auto-loads `.env` and nothing else. `.env.prod` exists only on a dev machine, to exercise production locally:
 
@@ -68,6 +69,16 @@ Omitting `--env-file` there would start production containers with development c
 **Migrations**: both environments auto-apply pending EF Core migrations on startup (bounded retry, 5 attempts). This is safe only because the deployment is a single instance — no replicas or rolling deploys to race the migration. Set `Database:MigrateOnStartup=false` to opt out and apply `dotnet ef migrations script --idempotent` by hand instead.
 
 **Reverse proxy**: the app never calls `UseHttpsRedirection` — Kestrel only ever listens on HTTP (`ASPNETCORE_URLS: http://+:8080`) and holds no certificate, so TLS termination and the http→https redirect belong to Caddy. Redirecting in-process would bounce the request back to the proxy, which forwards it over HTTP again — an infinite loop. `UseForwardedHeaders` is the **first** middleware, honouring `X-Forwarded-Proto` and `X-Forwarded-For` so the scheme, `Request.IsHttps` and client IPs are the client's, not the proxy's. Its `KnownNetworks`/`KnownProxies` trust lists are cleared (Caddy has a dynamic container IP, and the loopback default would silently drop the headers); that is safe **only** because `docker-compose.yml` publishes no API port. Publishing it would let anything on the LAN spoof `X-Forwarded-*` — the two must stay in sync.
+
+Caddy is a service in `docker-compose.yml` (`Dockerfile.caddy` + `Caddyfile`), built from `caddy:2.11-builder` with the `caddy-dns/duckdns` module so it can answer an ACME **DNS-01** challenge. DNS-01 proves domain control by writing a TXT record at DuckDNS, so Let's Encrypt never connects back — port 80 is never opened, and certificates issue and renew before the router is touched. Only 443 is published (TCP and UDP; UDP gives HTTP/3). The `caddy_data` volume holds the certificates and the ACME account and **must** persist — without it Caddy re-requests on every restart and hits Let's Encrypt rate limits. A sibling `duckdns` service keeps the A record pointed at the changing home IP, which the Caddy module does not do.
+
+**This deployment is LAN-ONLY, by choice.** Nothing is port-forwarded. `DUCKDNS_IP` in the server's env file pins the DuckDNS A record to the host's *reserved private* address (`192.168.68.63`), so `pixxnest.duckdns.org` resolves to `192.168.68.63` for everyone — which is useful only to devices already on the home WiFi and unreachable from the internet. Verified: the Deco's resolver does not strip the private answer, so phones on the LAN resolve it correctly.
+
+This keeps real, publicly-trusted TLS with no public attack surface: DNS-01 is an **outbound** conversation with DuckDNS and Let's Encrypt, so issuance and the automatic ~60-day renewal need no inbound port. HTTPS (rather than plain LAN HTTP) also means iOS App Transport Security needs no plist exemption and JWTs never cross the WiFi in cleartext.
+
+To go public later: set `DUCKDNS_IP=` (empty) so the updater publishes the WAN IP again, and forward 443/tcp+udp. Do **not** do that before roadmap task 06.
+
+⚠️ **Residual risk, LAN-scoped.** `MediaController` has no class-level `[Authorize]` — only `GET /api/media`, `/search` and `/date-range` carry it. Verified anonymous right now: `GET /api/media/{id}`, `GET /api/media/{id}/thumbnail`, `POST /api/media/upload/{sessionId}`, `DELETE /api/media/{id}`, and `GET /api/stats/system` (which returns real user and storage counts). No handler checks ownership either. Anyone on the WiFi — guests included — can read or delete any media by GUID. Roadmap tasks 04-09 close this; 06 is the important one.
 
 **Startup validation**: outside Development, a missing `ConnectionStrings:DefaultConnection`, or a missing or under-32-character `Jwt:Secret`, throws at startup; the process logs `Fatal` and exits non-zero. Neither has a placeholder value in `appsettings.json` any more, so the guards actually fire.
 
@@ -106,6 +117,12 @@ docker compose --env-file .env.prod -f docker-compose.yml up -d --build
 # Production + loopback-only admin ports (pgAdmin 5433, Seq 5342) — debugging only
 docker compose --env-file .env.prod -f docker-compose.yml -f docker-compose.debug.yml up -d
 
+# Reload the Caddyfile without rebuilding (it is bind-mounted read-only)
+docker compose -f docker-compose.yml exec caddy caddy reload --config /etc/caddy/Caddyfile
+
+# Did the certificate issue, or did Caddy re-request it on restart?
+docker compose -f docker-compose.yml logs caddy | grep -i certificate
+
 # Inspect either database directly
 docker exec -it pixnest-dev-postgres psql -U "$POSTGRES_USER" -d PixNestDev
 docker exec -it pixnest-postgres     psql -U "$POSTGRES_USER" -d PixNest
@@ -120,12 +137,28 @@ Before running locally, set these (or use a `.env` file for Docker):
 | `ConnectionStrings__DefaultConnection` | PostgreSQL connection string. Required — startup fails without it |
 | `Jwt__Secret` | JWT signing key (≥32 chars). Required outside Development, where a hardcoded fallback is used |
 | `StorageSettings__BasePath` | Absolute path for media file storage (`/app/media` inside the container) |
+| `DUCKDNS_SUBDOMAIN` | DuckDNS label only (`my-name`, not `my-name.duckdns.org`). Used by `caddy` and `duckdns` |
+| `DUCKDNS_TOKEN` | DuckDNS API token. Read at runtime via `{env.DUCKDNS_TOKEN}` so it never appears in the `Caddyfile` |
+| `COMPOSE_PROFILES` | Set to `edge` on the server (and in `.env.prod`) to start Caddy + the DuckDNS updater. Unset in development |
+| `DUCKDNS_IP` | Pins the DuckDNS A record. Set to the host's reserved **private** IP for a LAN-only deployment; leave empty to publish the public WAN IP (needs a 443 port-forward) |
 
-For Docker Compose, set `POSTGRES_USER`, `POSTGRES_PASSWORD`, `JWT_SECRET`, `SEQ_ADMIN_PASSWORD`, and `MEDIA_STORAGE_PATH` in `.env` (development) and `.env.prod` (production) at the repo root. Neither is committed. Because the two environments are separate Postgres clusters, their credentials are genuinely independent — a password that works on one is rejected by the other.
+For Docker Compose, set `POSTGRES_USER`, `POSTGRES_PASSWORD`, `JWT_SECRET`, `SEQ_ADMIN_PASSWORD`, `MEDIA_STORAGE_PATH` and the `DUCKDNS_*` pair in `.env` (development) and `.env.prod` (production) at the repo root. Neither is committed. Because the two environments are separate Postgres clusters, their credentials are genuinely independent — a password that works on one is rejected by the other.
 
 ## Docker Services
 
-Production (`docker-compose.yml`) — containers `pixnest-*`, database `PixNest` — publishes **no** host ports. Caddy reaches the API as `http://api:8080` over the external `caddy-net`; Postgres and Seq are reachable only from inside the stack. If Caddy runs on the host rather than in Docker, publish `127.0.0.1:5100:8080` instead and drop `caddy-net` — see the comments in that file.
+Production (`docker-compose.yml`) — containers `pixnest-*`, database `PixNest`. Only Caddy publishes host ports (443 TCP+UDP); `api`, `postgres` and `seq` publish none and are reachable only from inside the stack. Everything shares a single `pixnest-net`, so Caddy reaches the API as `http://api:8080` by service name.
+
+| Service | Profile | Host port | Purpose |
+|---|---|---|---|
+| `caddy` | `edge` | 443 TCP+UDP | TLS termination, Let's Encrypt via DuckDNS DNS-01 |
+| `duckdns` | `edge` | — | Pins the DuckDNS A record to `DUCKDNS_IP` (private = LAN-only) |
+| `api` | — | none | ASP.NET Core API, HTTP only |
+| `postgres` | — | none | PostgreSQL 16 |
+| `seq` | — | none | Structured log UI |
+
+`caddy` and `duckdns` sit behind `profiles: ["edge"]`, enabled by `COMPOSE_PROFILES=edge` in the **server's** env file and absent from a dev laptop's. That keeps `docker compose up -d` the right bare command on both machines — the same "`.env` holds whatever that machine runs" rule as every other value. `COMPOSE_PROFILES` lives in `.env.prod` on a dev machine, so exercising production locally brings the edge up too.
+
+Seq has deliberately **no** Caddy route: DuckDNS allows only one TXT record, so a per-subdomain certificate cannot validate, and an admin UI does not belong on the public internet regardless. Reach it through `docker-compose.debug.yml` (`127.0.0.1:5342`) over an SSH tunnel.
 
 Development (`docker-compose.override.yml`) — containers `pixnest-dev-*`, database `PixNestDev`:
 

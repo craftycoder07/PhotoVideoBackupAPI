@@ -1,0 +1,49 @@
+# PixNest — TLS edge.
+#
+# Caddy terminates TLS here and forwards plain HTTP to the API over pixnest-net. The
+# .NET app holds no certificate and never speaks HTTPS; see the "Reverse proxy" note in
+# CLAUDE.md for why it must not call UseHttpsRedirection.
+#
+# This file is bind-mounted read-only, so edits take effect without an image rebuild:
+#   docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile
+#
+# DUCKDNS_SUBDOMAIN is substituted at PARSE time ({$VAR}) because a site address has to
+# be a literal. DUCKDNS_TOKEN is read at RUNTIME ({env.VAR}) so the token never appears
+# in this file, never reaches git, and never shows up in `caddy adapt` output.
+
+{$DUCKDNS_SUBDOMAIN}.duckdns.org {
+	tls {
+		dns duckdns {env.DUCKDNS_TOKEN}
+
+		# Not optional in practice. DuckDNS TXT propagation lags, and the default
+		# system resolver will happily serve a cached negative answer for
+		# _acme-challenge — which is the most common way DNS-01 fails here. Ask
+		# public resolvers instead. If issuance still times out, add:
+		#   propagation_delay 30s
+		resolvers 1.1.1.1 8.8.8.8
+
+		# While first getting DNS-01 working, uncomment this to use Let's Encrypt's
+		# STAGING CA. It issues an untrusted cert (curl needs -k), but its rate
+		# limits are enormous, so a misconfigured subdomain, a wrong token or a
+		# propagation timeout costs nothing. Comment it out again for the real
+		# cellular test — and delete /data first, or Caddy keeps serving the
+		# staging cert it already has:
+		#   docker compose -f docker-compose.yml down
+		#   docker volume rm pixnestapi_caddy_data
+		# ca https://acme-staging-v02.api.letsencrypt.org/directory
+	}
+
+	# LAN-ONLY DEPLOYMENT. This host is NOT port-forwarded: pixxnest.duckdns.org
+	# resolves to a private 192.168.x.x address, so nothing outside the home network
+	# can reach Caddy at all. That is what replaced the public exposure gate that
+	# used to live here — see CLAUDE.md.
+	#
+	# ⚠️ The API is still effectively unauthenticated until roadmap task 06:
+	# MediaController has no class-level [Authorize] and no handler checks ownership.
+	# On a LAN-only deployment that means anyone on your WiFi — including guests —
+	# can read, download or delete anyone's media. Tasks 04-09 close that.
+	reverse_proxy api:8080
+
+	# Task 35 serves a static restore UI from this same origin, splitting the above
+	# into a `handle_path /api/*` -> reverse_proxy api:8080 plus a file_server.
+}

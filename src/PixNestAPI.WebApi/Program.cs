@@ -60,8 +60,8 @@ try
     // container with a dynamic bridge IP, so with the defaults the headers would be
     // silently discarded and the scheme would stay http. Clearing both trust lists means
     // anything able to reach this port can spoof X-Forwarded-*, which is safe ONLY
-    // because docker-compose.prod.yml does not publish the API port — Caddy on the shared
-    // Docker network is the sole route in. Do not publish the port without revisiting this.
+    // because docker-compose.yml does not publish the API port — Caddy on the shared
+    // pixnest-net is the sole route in. Do not publish the port without revisiting this.
     //
     // X-Forwarded-Host is deliberately NOT forwarded: nothing here needs it, and it would
     // let the Host header be set from a request header.

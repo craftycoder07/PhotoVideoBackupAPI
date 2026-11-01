@@ -79,20 +79,101 @@ services:
     volumes:
       - "${MEDIA_STORAGE_PATH}:/app/media"
       - dataprotection_keys:/app/.aspnet/DataProtection-Keys   # persist encryption keys across restarts
-      - logs:/app/logs   # rolling Serilog files survive container recreation, not just restarts
     # No published ports on purpose. Caddy reaches the API as http://api:8080 over
-    # caddy-net, and being unreachable any other way is what makes clearing
+    # pixnest-net, and being unreachable any other way is what makes clearing
     # KnownProxies/KnownNetworks in Program.cs safe — otherwise anything on the LAN
-    # could spoof X-Forwarded-Proto and X-Forwarded-For.
+    # could spoof X-Forwarded-Proto and X-Forwarded-For. The two must stay in sync:
+    # publishing this port means revisiting those trust lists.
     #
-    # If Caddy runs on the HOST instead of in Docker, delete caddy-net below and
-    # publish loopback-only instead — still unreachable from the LAN:
+    # If Caddy ever runs on the HOST instead of in Docker, publish loopback-only
+    # instead — still unreachable from the LAN:
     #   ports:
     #     - "127.0.0.1:5100:8080"
-    # Pick one of the two, never both.
     networks:
       - pixnest-net
-      - caddy-net
+    # curl is installed in the runtime stage of the Dockerfile specifically for this —
+    # the aspnet:8.0 base image ships neither curl nor wget. start_period covers
+    # migration-on-startup, which retries up to 5 times before the app serves traffic.
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+
+  # ── Caddy (TLS edge) ──────────────────────────────────────────────────────────
+  # Only starts where the env file sets COMPOSE_PROFILES=edge — production on the
+  # server. A dev laptop leaves it unset, so `docker compose up -d` there never tries
+  # to issue a real certificate. Same philosophy as the rest of .env: that file holds
+  # whatever the machine it is on actually runs.
+  caddy:
+    build:
+      context: .
+      dockerfile: Dockerfile.caddy
+    container_name: pixnest-caddy
+    restart: unless-stopped
+    profiles: ["edge"]
+    depends_on:
+      api:
+        condition: service_started   # deliberately NOT service_healthy — a sick API
+                                     # must never block certificate renewal
+    environment:
+      DUCKDNS_SUBDOMAIN: "${DUCKDNS_SUBDOMAIN}"
+      DUCKDNS_TOKEN: "${DUCKDNS_TOKEN}"
+    ports:
+      - "443:443"       # TLS. Port 80 is deliberately NOT published: DNS-01 never
+      - "443:443/udp"   # needs it, and 443/udp buys HTTP/3 for mobile uploads.
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro   # read-only: reload, don't rebuild
+      # The single most important line in this service. Without a persistent /data,
+      # Caddy re-requests the certificate on every restart and will earn a Let's
+      # Encrypt rate-limit ban within a day.
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - pixnest-net
+
+  # ── DuckDNS A-record updater ───────────────────────────────────────────────────
+  # The caddy-dns/duckdns module only writes ACME TXT records; keeping the A record
+  # correct is this service's job.
+  #
+  # Hand-rolled rather than a third-party image so nothing outside this file ever sees
+  # the token.
+  #
+  # DUCKDNS_IP is what makes this deployment LAN-ONLY. Set to this host's reserved
+  # private address, the public DNS record for the hostname points at 192.168.x.x, so
+  # the name only works for devices already on the home network and there is nothing
+  # to port-forward or attack from outside. Certificates keep renewing regardless,
+  # because DNS-01 is an OUTBOUND conversation with DuckDNS and Let's Encrypt.
+  #
+  # Leave DUCKDNS_IP EMPTY to go back to publishing the public WAN IP (DuckDNS then
+  # uses the source address it observes) — only do that alongside a 443 port-forward.
+  duckdns:
+    image: alpine:3
+    container_name: pixnest-duckdns
+    restart: unless-stopped
+    profiles: ["edge"]
+    environment:
+      DUCKDNS_SUBDOMAIN: "${DUCKDNS_SUBDOMAIN}"
+      DUCKDNS_TOKEN: "${DUCKDNS_TOKEN}"
+      DUCKDNS_IP: "${DUCKDNS_IP:-}"
+    # $$ escapes the $ so Compose passes it through to the shell instead of trying to
+    # substitute it itself.
+    command:
+      - sh
+      - -c
+      - |
+        apk add --no-cache curl >/dev/null
+        while :; do
+          if curl -fsS "https://www.duckdns.org/update?domains=$${DUCKDNS_SUBDOMAIN}&token=$${DUCKDNS_TOKEN}&ip=$${DUCKDNS_IP}"; then
+            echo " duckdns -> $${DUCKDNS_IP:-<public WAN IP>} at $$(date -u +%FT%TZ)"
+          else
+            echo "duckdns update FAILED $$(date -u +%FT%TZ)"
+          fi
+          sleep 300
+        done
+    networks:
+      - pixnest-net
 
 # ── Volumes ────────────────────────────────────────────────────────────────────
 volumes:
@@ -100,18 +181,14 @@ volumes:
   seq_data:               # Seq log data — survives container restarts
   dataprotection_keys:    # ASP.NET Core Data Protection key ring — survives container restarts
   logs:                   # Serilog rolling files — survives container recreation
+  caddy_data:             # TLS certificates + ACME account — MUST persist (rate limits)
+  caddy_config:           # Caddy's own managed config state
 
 # ── Networks ───────────────────────────────────────────────────────────────────
+# One network. Caddy is a service in this stack, so it reaches the API as
+# http://api:8080 by service name — there is no external network to create first.
+# Caddy sets X-Forwarded-For / -Proto by default and issues the http -> https redirect
+# itself, so the API never needs UseHttpsRedirection.
 networks:
   pixnest-net:
     driver: bridge
-  # The network Caddy already runs on. Create it once with:
-  #   docker network create caddy-net
-  # and attach the Caddy container to it. Then the Caddyfile site block is simply:
-  #   your-name.duckdns.org {
-  #       reverse_proxy api:8080
-  #   }
-  # Caddy sets X-Forwarded-For / -Proto / -Host by default and issues the
-  # http -> https redirect itself, so the API never needs UseHttpsRedirection.
-  caddy-net:
-    external: true

@@ -43,6 +43,14 @@ WORKDIR /app
 # Run as non-root for security
 RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
 
+# curl exists solely for the HEALTHCHECK below. The aspnet:8.0 base is Debian 12 and
+# ships NEITHER curl nor wget, so without this the health check can never pass and the
+# container is reported unhealthy forever. Installed before USER appuser (apt needs
+# root); curl itself runs fine unprivileged. ~10 MB on a 350 MB base.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends curl \
+ && rm -rf /var/lib/apt/lists/*
+
 # Create log, media and Data Protection directories with correct ownership.
 # The Data Protection path MUST exist in the image: docker-compose mounts a named volume
 # there, and Docker creates a missing mount point as root:root — which appuser (uid 100)
@@ -57,5 +65,10 @@ USER appuser
 
 # Port is controlled at runtime via ASPNETCORE_URLS env var in docker-compose
 EXPOSE 8080
+
+# Probes the same /health endpoint Caddy forwards. start-period covers
+# migration-on-startup, which retries up to 5 times before the app serves traffic.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
+    CMD curl -fsS http://127.0.0.1:8080/health || exit 1
 
 ENTRYPOINT ["dotnet", "PixNestAPI.WebApi.dll"]

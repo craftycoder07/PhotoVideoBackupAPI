@@ -34,12 +34,8 @@ services:
       ConnectionStrings__DefaultConnection: "Host=postgres;Port=5432;Database=PixNestDev;Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
     ports:
       - "5100:8080"   # API + Swagger -> http://localhost:5100
-    # !override replaces the base list rather than appending to it. Without it the dev
-    # API would still be attached to caddy-net, an external network that only exists on
-    # the server — development must not depend on it.
-    networks: !override
-      - pixnest-net
-
-networks:
-  # Drop the production-only external network entirely in development.
-  caddy-net: !reset null
+    # No networks override needed: the production base now defines a single
+    # pixnest-net and Caddy is a service inside the stack, so there is no external
+    # network for development to detach from. Caddy and the DuckDNS updater sit behind
+    # `profiles: ["edge"]` and simply never start here — the dev .env leaves
+    # COMPOSE_PROFILES unset.

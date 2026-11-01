@@ -1,0 +1,16 @@
+# Custom Caddy build — the stock `caddy` image contains no DNS provider modules, and
+# without one there is no way to answer an ACME DNS-01 challenge.
+#
+# DNS-01 is what makes this whole setup work on a home connection: the challenge is
+# satisfied by writing a TXT record at DuckDNS, so Let's Encrypt never has to connect
+# back to us. Port 80 stays closed, and a certificate can be issued (and renewed)
+# before the router is ever touched.
+#
+# Pinned to an exact minor on purpose: this runs unattended on a home server, where a
+# surprise Caddy major is not worth the convenience of a floating tag.
+
+FROM caddy:2.11-builder AS builder
+RUN xcaddy build --with github.com/caddy-dns/duckdns
+
+FROM caddy:2.11-alpine
+COPY --from=builder /usr/bin/caddy /usr/bin/caddy
